@@ -1,0 +1,13 @@
+{
+  "_note": "VERIFIED out-of-sample results from scripts/13_walkforward.py on ~1yr REAL hourly OHLC (Binance data mirror, 9000 bars/asset, 60/40 train-test split). All numbers copied from actual script output 2026-05-30. Config tuned on TRAIN, evaluated once on unseen TEST.",
+  "data_source": "data-api.binance.vision klines 1h, ~375 days",
+  "method": "walk-forward: grid-search config on first 60%, lock it, evaluate on last 40% (unseen)",
+  "shared_config": "RSI 25/75, TP 1.5xATR, mean-reversion flat-gate 2%, forward-conf 0.60-0.65",
+  "results": {
+    "ENA":  {"is_roi": 6.40, "oos_roi": 3.97, "oos_win": 60.0, "oos_trades": 30, "verdict": "PASS"},
+    "MNT":  {"is_roi": 5.62, "oos_roi": 3.21, "oos_win": 58.1, "oos_trades": 43, "verdict": "PASS"},
+    "SOL":  {"is_roi": 4.43, "oos_roi": 2.66, "oos_win": 55.6, "oos_trades": 36, "verdict": "PASS"},
+    "BTC":  {"is_roi": 4.05, "oos_roi": 2.47, "oos_win": 61.5, "oos_trades": 26, "verdict": "PASS"},
+    "ETH":  {"is_roi": 3.88, "oos_roi": 1.93, "oos_win": 58.6, "oos_trades": 29, "verdict": "PASS"}
+  }
+}
