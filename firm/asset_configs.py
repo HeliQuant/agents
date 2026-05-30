@@ -42,32 +42,37 @@ class AssetConfig:
 # Production configs. MNT is the calibrated hero; others start from DEFAULT and
 # get overwritten by the tuner (scripts/12_tune_asset.py) as configs are found.
 ASSET_CONFIGS: dict[str, AssetConfig] = {
-    # Each config found via scripts/12_tune_asset.py grid search (min 6 trades floor).
+    # MNT is the ONLY validated config — reproducible on the committed mnt_features.csv
+    # via scripts/10_historical_replay.py (+1.36% ROI, 69% win, PF 1.70).
     "MNT": AssetConfig(
         ticker="MNT", coingecko_id="mantle",
         oversold_rsi=25.0, overbought_rsi=75.0, mr_tp_atr_mult=1.8,
         mr_flat_threshold_pct=3.0, momentum_enabled=False,
-    ),  # +1.36% ROI, 69% win, 13 trades
+    ),
+    # The configs below are grid-search BEST GUESSES (scripts/12_tune_asset.py) tuned on a
+    # cached window. HONEST CAVEAT: they did NOT reproduce out-of-sample on a fresh data
+    # window (overfitting). Starting points for proper walk-forward tuning (Phase 2),
+    # NOT validated profitable configs.
     "BTC": AssetConfig(
         ticker="BTC", coingecko_id="bitcoin",
         oversold_rsi=20.0, overbought_rsi=80.0, mr_tp_atr_mult=2.2,
         mr_flat_threshold_pct=5.0, momentum_enabled=False,
-    ),  # +0.94% ROI, 71.4% win, 7 trades
+    ),
     "METH": AssetConfig(
         ticker="METH", coingecko_id="mantle-staked-ether",
         oversold_rsi=20.0, overbought_rsi=80.0, mr_tp_atr_mult=1.8,
         mr_flat_threshold_pct=5.0, momentum_enabled=False,
-    ),  # +0.55% ROI, 62.5% win, 8 trades
+    ),
     "CMETH": AssetConfig(
         ticker="CMETH", coingecko_id="mantle-restaked-eth",
         oversold_rsi=20.0, overbought_rsi=80.0, mr_tp_atr_mult=2.2,
         mr_flat_threshold_pct=5.0, momentum_enabled=False,
-    ),  # +0.48% ROI, 62.5% win, 8 trades
+    ),
     "FBTC": AssetConfig(
         ticker="FBTC", coingecko_id="ignition-fbtc",
         oversold_rsi=20.0, overbought_rsi=80.0, mr_tp_atr_mult=1.8,
         mr_flat_threshold_pct=5.0, momentum_enabled=False,
-    ),  # +0.55% ROI, 62.5% win, 8 trades
+    ),
 }
 
 
