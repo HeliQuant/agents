@@ -78,12 +78,19 @@ REGIME_LABELS = ["Ranging", "Trending_Up", "Trending_Down", "High_Volatility"]
 LABEL_TO_INT = {n: i for i, n in enumerate(REGIME_LABELS)}
 FORECAST_HORIZON = 4
 
-REGIME_TO_STRATEGY = {
-    "Trending_Up": MomentumStrategy(),
-    "Trending_Down": MomentumStrategy(),
-    "Ranging": MeanReversionStrategy(),
-    "High_Volatility": DefensiveStrategy(),
-}
+def build_strategy_map(adx_strong_threshold: float) -> dict:
+    """Per-asset strategy params: momentum.adx_min = asset's own p60 ADX threshold.
+    Hard-coded adx_min=60 was tuned for MNT and too strict for BTC/mETH/etc."""
+    momentum = MomentumStrategy(adx_min=max(adx_strong_threshold, 25.0))
+    return {
+        "Trending_Up": momentum,
+        "Trending_Down": momentum,
+        "Ranging": MeanReversionStrategy(),
+        "High_Volatility": DefensiveStrategy(),
+    }
+
+
+REGIME_TO_STRATEGY = build_strategy_map(60.0)  # default for MNT
 
 
 # ─── 1. Data ───────────────────────────────────────────────────────────────
@@ -291,6 +298,9 @@ def replay(df: pd.DataFrame, bundle: dict) -> dict:
     adx_th = bundle["adx_strong_threshold"]
     vol_th = bundle["vol_high_threshold"]
 
+    # Per-asset momentum calibration
+    strategy_map = build_strategy_map(adx_th)
+
     equity = INITIAL_EQUITY
     trades = []
     momentum_activations = {"long": 0, "short": 0, "pending": 0}
@@ -330,7 +340,7 @@ def replay(df: pd.DataFrame, bundle: dict) -> dict:
             else:
                 momentum_activations["long" if "_Up" in chosen else "short"] += 1
 
-        strategy = REGIME_TO_STRATEGY[chosen]
+        strategy = strategy_map[chosen]
         window = df.iloc[max(0, i - 30):i + 1]
         decision: StrategyDecision = strategy.evaluate(window, Position())
         if decision.action not in (Action.BUY, Action.SELL):

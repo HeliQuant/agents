@@ -25,7 +25,7 @@ class MeanReversionStrategy(BaseStrategy):
     def __init__(
         self,
         *,
-        oversold_rsi: float = 25.0,
+        oversold_rsi: float = 25.0,        # MNT V5 production
         overbought_rsi: float = 75.0,
         sl_atr_mult: float = 1.0,
         tp_atr_mult: float = 1.8,
