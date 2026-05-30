@@ -78,14 +78,23 @@ REGIME_LABELS = ["Ranging", "Trending_Up", "Trending_Down", "High_Volatility"]
 LABEL_TO_INT = {n: i for i, n in enumerate(REGIME_LABELS)}
 FORECAST_HORIZON = 4
 
-def build_strategy_map(adx_strong_threshold: float) -> dict:
-    """Per-asset strategy params: momentum.adx_min = asset's own p60 ADX threshold.
-    Hard-coded adx_min=60 was tuned for MNT and too strict for BTC/mETH/etc."""
-    momentum = MomentumStrategy(adx_min=max(adx_strong_threshold, 25.0))
+def build_strategy_map(adx_strong_threshold: float, cfg=None) -> dict:
+    """Per-asset strategy params. When an AssetConfig is supplied, mean reversion
+    + momentum use that asset's tuned thresholds (found via scripts/12_tune_asset.py)."""
+    from firm.asset_configs import AssetConfig
+
+    if cfg is None:
+        cfg = AssetConfig(ticker="DEFAULT", coingecko_id="")
+    momentum = MomentumStrategy(adx_min=max(cfg.momentum_adx_min, adx_strong_threshold, 25.0))
+    mean_rev = MeanReversionStrategy(
+        oversold_rsi=cfg.oversold_rsi,
+        overbought_rsi=cfg.overbought_rsi,
+        tp_atr_mult=cfg.mr_tp_atr_mult,
+    )
     return {
         "Trending_Up": momentum,
         "Trending_Down": momentum,
-        "Ranging": MeanReversionStrategy(),
+        "Ranging": mean_rev,
         "High_Volatility": DefensiveStrategy(),
     }
 
@@ -290,7 +299,11 @@ def detect_current(row, adx_th, vol_th):
     return "Ranging"
 
 
-def replay(df: pd.DataFrame, bundle: dict) -> dict:
+def replay(df: pd.DataFrame, bundle: dict, cfg=None) -> dict:
+    from firm.asset_configs import AssetConfig
+
+    if cfg is None:
+        cfg = AssetConfig(ticker="DEFAULT", coingecko_id="")
     df = df.dropna().reset_index(drop=True)
     model = bundle["model"]
     proba = model.predict_proba(df[bundle["features"]])
@@ -298,8 +311,10 @@ def replay(df: pd.DataFrame, bundle: dict) -> dict:
     adx_th = bundle["adx_strong_threshold"]
     vol_th = bundle["vol_high_threshold"]
 
-    # Per-asset momentum calibration
-    strategy_map = build_strategy_map(adx_th)
+    # Per-asset strategy calibration
+    strategy_map = build_strategy_map(adx_th, cfg)
+    conf_gate = cfg.forward_conf_threshold
+    flat_pct = cfg.mr_flat_threshold_pct
 
     equity = INITIAL_EQUITY
     trades = []
@@ -314,7 +329,7 @@ def replay(df: pd.DataFrame, bundle: dict) -> dict:
         row = df.iloc[i]
         idx = int(proba[i].argmax())
         conf = float(proba[i][idx])
-        if conf < FORWARD_CONFIDENCE_THRESHOLD:
+        if conf < conf_gate:
             i += 1
             continue
 
@@ -327,11 +342,13 @@ def replay(df: pd.DataFrame, bundle: dict) -> dict:
         else:
             chosen = fwd
 
-        # Strategy Lifecycle for Momentum
-        lifecycle = assess_momentum_activation(df.iloc[max(0, i - 60):i + 1])
+        # Strategy Lifecycle (per-asset flat threshold)
+        lifecycle = assess_momentum_activation(
+            df.iloc[max(0, i - 60):i + 1], return_strong_pct=flat_pct
+        )
         if chosen in ("Trending_Up", "Trending_Down"):
-            if lifecycle.momentum_status == LifecycleStatus.PENDING:
-                chosen = "High_Volatility"  # defensive fallback
+            if not cfg.momentum_enabled or lifecycle.momentum_status == LifecycleStatus.PENDING:
+                chosen = "High_Volatility"  # momentum disabled or dormant
                 momentum_activations["pending"] += 1
             elif chosen == "Trending_Up" and lifecycle.momentum_status == LifecycleStatus.ACTIVE_SHORT:
                 chosen = "High_Volatility"
@@ -431,8 +448,10 @@ def main() -> None:
     joblib.dump(bundle, model_path)
     print(f"  saved -> {model_path}")
 
-    print(f"[4/4] Running replay for {args.ticker} (V5: momentum lifecycle)...")
-    summary = replay(feat, bundle)
+    print(f"[4/4] Running replay for {args.ticker} (per-asset tuned config)...")
+    from firm.asset_configs import get_config
+    cfg = get_config(args.ticker)
+    summary = replay(feat, bundle, cfg)
     print()
     if summary.get("trades", 0) == 0:
         print(f"  No trades fired.")
