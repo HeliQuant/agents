@@ -42,6 +42,7 @@ class LifecycleStatus(str, Enum):
 @dataclass(frozen=True)
 class StrategyLifecycle:
     momentum_status: LifecycleStatus
+    mean_reversion_active: bool       # True only when macro trend is FLAT (ranging)
     macro_return_pct: float           # last N-bar % return
     macro_ema_change_pct: float       # last N-bar % EMA50 change
     macro_window_bars: int
@@ -67,6 +68,7 @@ def assess_momentum_activation(
     if len(window) < macro_window_bars + 1:
         return StrategyLifecycle(
             momentum_status=LifecycleStatus.PENDING,
+            mean_reversion_active=False,
             macro_return_pct=0.0,
             macro_ema_change_pct=0.0,
             macro_window_bars=macro_window_bars,
@@ -111,8 +113,18 @@ def assess_momentum_activation(
             f"EMA50_{macro_window_bars}={macro_ema_change_pct:+.2f}% -> momentum PENDING"
         )
 
+    # Mean reversion is the MIRROR of momentum: only safe when the macro trend is
+    # FLAT (ranging). On a strong directional move, oversold RSI is a falling
+    # knife, not a bounce — so mean reversion must stay dormant. We treat "flat"
+    # as |macro return| below the strong-trend threshold.
+    mean_reversion_active = abs(macro_return_pct) < return_strong_pct
+    why += (
+        f" | mean-reversion {'ACTIVE (macro flat)' if mean_reversion_active else 'DORMANT (macro trending)'}"
+    )
+
     return StrategyLifecycle(
         momentum_status=status,
+        mean_reversion_active=mean_reversion_active,
         macro_return_pct=macro_return_pct,
         macro_ema_change_pct=macro_ema_change_pct,
         macro_window_bars=macro_window_bars,

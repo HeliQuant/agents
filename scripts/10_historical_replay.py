@@ -160,9 +160,12 @@ def main() -> None:
         lifecycle = assess_momentum_activation(df.iloc[max(0, i - 60):i + 1])
 
         if chosen in ("Trending_Up", "Trending_Down"):
-            # Force disable momentum for MNT bear-phase validation (V5):
-            # MNT data showed momentum loses in ALL tested configurations.
-            # Defer momentum activation until BTC/multi-asset data is added.
+            # Momentum stays dormant for MNT bear-phase validation (V5):
+            # MNT data showed momentum loses in all tested configurations.
+            chosen = "High_Volatility"   # treat as Defensive (no trade)
+        elif chosen == "Ranging" and not lifecycle.mean_reversion_active:
+            # Mean reversion lifecycle gate: skip fading extremes when the macro
+            # 30-bar move is large (trending) -> avoids catching a falling knife.
             chosen = "High_Volatility"   # treat as Defensive (no trade)
 
         strategy = REGIME_TO_STRATEGY[chosen]

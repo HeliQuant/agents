@@ -1,28 +1,28 @@
 {
-  "trades": 10,
-  "wins": 3,
-  "losses": 7,
-  "win_rate_pct": 30.0,
-  "roi_pct": -1.4580000000000037,
-  "profit_factor": 0.6317440037168244,
-  "max_drawdown_pct": 2.8674511986641775,
-  "sharpe_annualized": -19.069089599591116,
-  "final_equity": 985.42,
+  "trades": 15,
+  "wins": 5,
+  "losses": 10,
+  "win_rate_pct": 33.33333333333333,
+  "roi_pct": -2.7690000000000103,
+  "profit_factor": 0.5122826425869914,
+  "max_drawdown_pct": 3.2931774928008513,
+  "sharpe_annualized": -27.445371219058444,
+  "final_equity": 972.31,
   "momentum_activations": {
     "long": 48,
     "short": 57,
-    "pending": 397
+    "pending": 392
   },
   "by_strategy": {
     "mean_reversion": {
-      "trades": 8,
-      "wins": 3,
-      "total_pnl": 2.43
+      "trades": 13,
+      "wins": 5,
+      "total_pnl": -10.67
     },
     "momentum_breakout": {
       "trades": 2,
       "wins": 0,
-      "total_pnl": -17.014
+      "total_pnl": -17.017
     }
   }
 }

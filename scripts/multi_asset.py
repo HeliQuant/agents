@@ -339,6 +339,10 @@ def replay(df: pd.DataFrame, bundle: dict) -> dict:
                 chosen = "High_Volatility"
             else:
                 momentum_activations["long" if "_Up" in chosen else "short"] += 1
+        elif chosen == "Ranging" and not lifecycle.mean_reversion_active:
+            # Mean reversion lifecycle gate: don't fade extremes during a strong
+            # macro trend (avoids catching a falling knife on trending assets).
+            chosen = "High_Volatility"
 
         strategy = strategy_map[chosen]
         window = df.iloc[max(0, i - 30):i + 1]
