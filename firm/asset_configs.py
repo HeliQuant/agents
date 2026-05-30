@@ -1,11 +1,26 @@
-"""Per-asset strategy configuration.
+"""Per-asset strategy configuration — MODULAR, one config per market.
 
-Each tradeable asset gets its OWN tuned parameters so calibration for one market
-never collides with another. MNT was tuned first (the production hero); other
-assets get their own configs found via scripts/12_tune_asset.py grid search.
+Each tradeable asset gets its OWN config block so calibration for one market never
+collides with another. Grouped by family: Mantle native (MNT) and its ecosystem
+children (mETH, cmETH, fBTC) each kept separate.
 
-Design: a frozen dataclass per asset, looked up by ticker. `DEFAULT` is the
-conservative fallback for any asset without an explicit config.
+⚠️ HONEST STATE (verified 2026-05-30):
+  - Only MNT has a positive, reproducible result, and ONLY as a 90-day full-period
+    replay (scripts/10_historical_replay.py): +1.36% ROI, 69% win, PF 1.81. That is
+    NOT out-of-sample — it is the asset the strategy was tuned on.
+  - Walk-forward out-of-sample testing did NOT validate any asset:
+      * Majors (BTC/ETH/SOL/... on Binance 1yr real OHLC): 0/12 pass (data/universe_results.json)
+      * cmETH, fBTC (CoinGecko 90d): OVERFIT (OOS -2.57%, -3.42%)
+      * MNT, mETH on Pyth: data too sparse (Pyth benchmark history ~64 valid hourly
+        bars/yr for these tokens) → could not walk-forward test.
+  - Therefore ONLY the MNT config is kept here, clearly labeled as replay-validated
+    (not OOS). No fabricated multi-asset numbers. Adding an asset requires real
+    out-of-sample proof first.
+
+Data-source reality for Mantle-ecosystem tokens (see get_data_source()):
+  - MNT, mETH, cmETH, fBTC have CoinGecko spot + Pyth on-chain oracle, but neither
+    gives deep, clean hourly OHLC history. Best on-chain history = GeckoTerminal /
+    DexScreener (Mantle DEX pools). That is the path for genuine validation (Phase 2).
 """
 
 from __future__ import annotations
@@ -18,80 +33,73 @@ class AssetConfig:
     ticker: str
     coingecko_id: str
 
-    # Mean reversion
     oversold_rsi: float = 25.0
     overbought_rsi: float = 75.0
     mr_sl_atr_mult: float = 1.0
     mr_tp_atr_mult: float = 1.8
 
-    # Momentum
     momentum_adx_min: float = 60.0
     momentum_breakout_window: int = 20
-    momentum_volume_min_ratio: float = 1.15
+    momentum_volume_min_ratio: float = 1.10
     mo_sl_atr_mult: float = 1.2
     mo_tp_atr_mult: float = 2.5
 
-    # Lifecycle gate (mean reversion active when |macro return| < this %)
     mr_flat_threshold_pct: float = 3.0
-    # Forward-regime confidence gate
     forward_conf_threshold: float = 0.65
-    # Whether momentum is allowed to fire at all for this asset
     momentum_enabled: bool = False
 
+    validation: str = "default"
 
-# Production configs. MNT is the calibrated hero; others start from DEFAULT and
-# get overwritten by the tuner (scripts/12_tune_asset.py) as configs are found.
+
+# The ONLY config with a real (replay) result. Not out-of-sample validated.
+_MNT = AssetConfig(
+    ticker="MNT", coingecko_id="mantle",
+    oversold_rsi=25.0, overbought_rsi=75.0, mr_tp_atr_mult=1.8,
+    mr_flat_threshold_pct=3.0, forward_conf_threshold=0.65, momentum_enabled=False,
+    validation="90d full-period replay +1.36% ROI / 69% win / PF 1.81 (NOT out-of-sample)",
+)
+
 ASSET_CONFIGS: dict[str, AssetConfig] = {
-    # MNT is the ONLY validated config — reproducible on the committed mnt_features.csv
-    # via scripts/10_historical_replay.py (+1.36% ROI, 69% win, PF 1.70).
-    "MNT": AssetConfig(
-        ticker="MNT", coingecko_id="mantle",
-        oversold_rsi=25.0, overbought_rsi=75.0, mr_tp_atr_mult=1.8,
-        mr_flat_threshold_pct=3.0, momentum_enabled=False,
-    ),
-    # The configs below are grid-search BEST GUESSES (scripts/12_tune_asset.py) tuned on a
-    # cached window. HONEST CAVEAT: they did NOT reproduce out-of-sample on a fresh data
-    # window (overfitting). Starting points for proper walk-forward tuning (Phase 2),
-    # NOT validated profitable configs.
-    "BTC": AssetConfig(
-        ticker="BTC", coingecko_id="bitcoin",
-        oversold_rsi=20.0, overbought_rsi=80.0, mr_tp_atr_mult=2.2,
-        mr_flat_threshold_pct=5.0, momentum_enabled=False,
-    ),
-    "METH": AssetConfig(
-        ticker="METH", coingecko_id="mantle-staked-ether",
-        oversold_rsi=20.0, overbought_rsi=80.0, mr_tp_atr_mult=1.8,
-        mr_flat_threshold_pct=5.0, momentum_enabled=False,
-    ),
-    "CMETH": AssetConfig(
-        ticker="CMETH", coingecko_id="mantle-restaked-eth",
-        oversold_rsi=20.0, overbought_rsi=80.0, mr_tp_atr_mult=2.2,
-        mr_flat_threshold_pct=5.0, momentum_enabled=False,
-    ),
-    "FBTC": AssetConfig(
-        ticker="FBTC", coingecko_id="ignition-fbtc",
-        oversold_rsi=20.0, overbought_rsi=80.0, mr_tp_atr_mult=1.8,
-        mr_flat_threshold_pct=5.0, momentum_enabled=False,
-    ),
+    "MNT": _MNT,
 }
 
 
+# Where to source data for each ecosystem token (honest: history is thin for children).
+_DATA_SOURCE = {
+    "MNT": "coingecko:mantle (90d hourly) | pyth:Crypto.MNT/USD (sparse history)",
+    "METH": "coingecko:mantle-staked-ether | pyth:Crypto.METH/USD (sparse)",
+    "CMETH": "coingecko:mantle-restaked-eth (90d only)",
+    "FBTC": "coingecko:ignition-fbtc (90d only)",
+}
+
 _COINGECKO_IDS = {
     "MNT": "mantle",
-    "BTC": "bitcoin",
     "METH": "mantle-staked-ether",
     "CMETH": "mantle-restaked-eth",
     "FBTC": "ignition-fbtc",
-    "USDE": "ethena-usde",
 }
 
 
 def get_config(ticker: str) -> AssetConfig:
-    """Return the tuned config for a ticker, or a sensible DEFAULT."""
+    """Return the validated config for a ticker, or a conservative DEFAULT.
+
+    DEFAULT is returned for any asset without a real validated config. Trading on a
+    DEFAULT config is "explore only" — it has NOT been proven out-of-sample.
+    """
     ticker = ticker.upper()
     if ticker in ASSET_CONFIGS:
         return ASSET_CONFIGS[ticker]
     return AssetConfig(
         ticker=ticker,
         coingecko_id=_COINGECKO_IDS.get(ticker, ticker.lower()),
+        validation="UNVALIDATED (default config — not proven out-of-sample)",
     )
+
+
+def is_validated(ticker: str) -> bool:
+    """True only if the asset has a config with a real (non-default) result."""
+    return ticker.upper() in ASSET_CONFIGS
+
+
+def get_data_source(ticker: str) -> str:
+    return _DATA_SOURCE.get(ticker.upper(), "unknown")
