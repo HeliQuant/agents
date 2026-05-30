@@ -1,0 +1,38 @@
+{
+  "scenario_A_ml_only": {
+    "label": "ML-only (XGBoost + ADX)",
+    "trades": 29,
+    "wins": 16,
+    "losses": 13,
+    "win_rate": 0.5517241379310345,
+    "total_pnl": 10.200021511574974,
+    "roi_pct": 1.0200021511574953,
+    "profit_factor": 1.1160477959535509,
+    "max_drawdown_pct": 2.3434156289647925,
+    "final_equity": 1010.200021511575
+  },
+  "scenario_B_ml_plus_allora": {
+    "label": "ML + Allora gate (65% acc)",
+    "trades": 25,
+    "wins": 15,
+    "losses": 10,
+    "win_rate": 0.6,
+    "total_pnl": 16.108190043457608,
+    "roi_pct": 1.6108190043457649,
+    "profit_factor": 1.213097405086481,
+    "max_drawdown_pct": 4.00673070635164,
+    "final_equity": 1016.1081900434576
+  },
+  "params": {
+    "initial_equity": 1000.0,
+    "risk_per_trade": 0.01,
+    "swap_fee_per_side": 0.001,
+    "lookahead_bars": 8,
+    "sl_multiplier": 1.0,
+    "reward_multiplier": 1.46,
+    "buy_threshold": 0.65,
+    "sell_threshold": 0.6,
+    "min_adx": 20.0,
+    "allora_simulated_accuracy": 0.65
+  }
+}

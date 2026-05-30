@@ -1,0 +1,5 @@
+,pred_Ranging,pred_Trending_Up,pred_Trending_Down,pred_High_Volatility
+true_Ranging,96,12,10,0
+true_Trending_Up,6,17,6,0
+true_Trending_Down,28,1,40,0
+true_High_Volatility,14,16,3,2

@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build
+dist/
+build/
+
+# Environment
+.env
+.env.local
+*.env
+
+# Live runtime artifacts (regenerable)
+data/live_ticks.jsonl
+data/live_trades.jsonl
+data/live_summary.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

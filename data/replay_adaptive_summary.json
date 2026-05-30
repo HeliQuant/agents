@@ -1,0 +1,56 @@
+{
+  "trades": 14,
+  "fired_signals": 14,
+  "held_signals": 1005,
+  "wins": 8,
+  "losses": 6,
+  "win_rate_pct": 57.14285714285714,
+  "roi_pct": -1.8242656830753767,
+  "profit_factor": 0.6369171182969474,
+  "max_drawdown_pct": 2.951999999999998,
+  "sharpe_annualized": -17.929894194230073,
+  "final_equity": 981.76,
+  "market_state_distribution": {
+    "strong_bull": 48,
+    "mixed": 214,
+    "ranging": 413,
+    "volatile": 242,
+    "strong_bear": 102
+  },
+  "by_strategy": {
+    "mean_reversion": {
+      "trades": 7,
+      "wins": 5,
+      "avg_pnl": 0.249,
+      "total_pnl": 1.744
+    },
+    "momentum_breakout": {
+      "trades": 7,
+      "wins": 3,
+      "avg_pnl": -2.855,
+      "total_pnl": -19.987
+    }
+  },
+  "by_market_state": {
+    "ranging": {
+      "trades": 7,
+      "wins": 5,
+      "total_pnl": 1.744
+    },
+    "strong_bear": {
+      "trades": 3,
+      "wins": 2,
+      "total_pnl": -1.138
+    },
+    "strong_bull": {
+      "trades": 4,
+      "wins": 1,
+      "total_pnl": -18.849
+    }
+  },
+  "by_outcome": {
+    "TP": 7,
+    "SL": 6,
+    "TIMEOUT": 1
+  }
+}

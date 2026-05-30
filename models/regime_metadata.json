@@ -1,0 +1,25 @@
+{
+  "model_type": "forward_regime_classifier",
+  "asset": "MNT/USD",
+  "data_source": "CoinGecko market_chart days=90 (~hourly cadence)",
+  "forecast_horizon_bars": 4,
+  "n_train": 1015,
+  "n_test": 251,
+  "n_features": 39,
+  "n_classes": 4,
+  "classes": [
+    "Ranging",
+    "Trending_Up",
+    "Trending_Down",
+    "High_Volatility"
+  ],
+  "cv_mean_accuracy": 0.5810650887573965,
+  "cv_std_accuracy": 0.09522032042552159,
+  "test_accuracy": 0.6175298804780877,
+  "persistence_baseline_test": 0.5856573705179283,
+  "thresholds": {
+    "adx_strong": 52.45123610815058,
+    "vol_high": 0.00665622409894115
+  },
+  "model_class": "XGBClassifier (multi:softprob)"
+}

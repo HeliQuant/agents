@@ -1,0 +1,28 @@
+{
+  "trades": 16,
+  "wins": 8,
+  "losses": 8,
+  "win_rate_pct": 50.0,
+  "roi_pct": -2.5679999999999925,
+  "profit_factor": 0.5333553812718511,
+  "max_drawdown_pct": 2.5679999999999947,
+  "sharpe_annualized": -26.29027514251903,
+  "final_equity": 974.32,
+  "momentum_activations": {
+    "long": 58,
+    "short": 52,
+    "pending": 448
+  },
+  "by_strategy": {
+    "mean_reversion": {
+      "trades": 15,
+      "wins": 8,
+      "total_pnl": -18.426
+    },
+    "momentum_breakout": {
+      "trades": 1,
+      "wins": 0,
+      "total_pnl": -7.254
+    }
+  }
+}

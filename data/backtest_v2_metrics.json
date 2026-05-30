@@ -1,0 +1,55 @@
+{
+  "old_architecture": {
+    "label": "OLD: ML direction + ADX",
+    "trades": 29,
+    "wins": 16,
+    "losses": 13,
+    "win_rate": 0.5517241379310345,
+    "total_pnl": 10.200021511574974,
+    "roi_pct": 1.0200021511574953,
+    "profit_factor": 1.1160477959535509,
+    "max_drawdown_pct": 2.3434156289647925,
+    "sharpe_annualized": 3.997103330227807,
+    "calmar": 0.4352630146143059,
+    "final_equity": 1010.200021511575
+  },
+  "new_architecture": {
+    "label": "NEW: regime router (conf>=0.60)",
+    "trades": 11,
+    "wins": 5,
+    "losses": 6,
+    "win_rate": 0.45454545454545453,
+    "total_pnl": -18.777117260789247,
+    "roi_pct": -1.8777117260789233,
+    "profit_factor": 0.6212354289568094,
+    "max_drawdown_pct": 2.711910252721695,
+    "sharpe_annualized": -5.287348565863119,
+    "calmar": -0.6923944935841577,
+    "final_equity": 981.2228827392107,
+    "regime_distribution": {
+      "Ranging": 83,
+      "Trending_Up": 11,
+      "Trending_Down": 23,
+      "High_Volatility": 2
+    }
+  },
+  "comparison": {
+    "roi_delta_pct": -2.8977138772364186,
+    "win_rate_delta": -0.09717868338557994,
+    "sharpe_delta": -9.284451896090925,
+    "drawdown_delta_pct": -0.3684946237569027
+  },
+  "params": {
+    "initial_equity": 1000.0,
+    "risk_per_trade": 0.01,
+    "swap_fee_per_side": 0.001,
+    "lookahead_bars": 8,
+    "sl_atr_mult": 1.0,
+    "tp_atr_mult": 1.46,
+    "old_buy_threshold": 0.65,
+    "old_sell_threshold": 0.6,
+    "old_min_adx": 20.0,
+    "new_forward_conf_threshold": 0.65,
+    "annualisation_factor": 8760
+  }
+}

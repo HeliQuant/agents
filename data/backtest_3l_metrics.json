@@ -1,0 +1,54 @@
+{
+  "A_old_baseline": {
+    "label": "A) OLD direction predictor",
+    "trades": 29,
+    "wins": 16,
+    "losses": 13,
+    "win_rate": 0.5517241379310345,
+    "roi_pct": 1.0200021511574953,
+    "profit_factor": 1.1160477959535509,
+    "max_drawdown_pct": 2.3434156289647925,
+    "sharpe_annualized": 3.997103330227807,
+    "calmar": 0.4352630146143059,
+    "final_equity": 1010.200021511575
+  },
+  "B_layer1_only": {
+    "label": "B) Layer 1 (regime + strategy)",
+    "trades": 11,
+    "wins": 5,
+    "losses": 6,
+    "win_rate": 0.45454545454545453,
+    "roi_pct": -1.8777117260789233,
+    "profit_factor": 0.6212354289568094,
+    "max_drawdown_pct": 2.711910252721695,
+    "sharpe_annualized": -5.287348565863119,
+    "calmar": -0.6923944935841577,
+    "final_equity": 981.2228827392107
+  },
+  "C_full_3layer_mantis": {
+    "label": "C) MANTIS 3-Layer (Allora=65%, Whale=60%)",
+    "trades": 7,
+    "wins": 3,
+    "losses": 4,
+    "win_rate": 0.42857142857142855,
+    "roi_pct": -1.4760438888828165,
+    "profit_factor": 0.5873182699427298,
+    "max_drawdown_pct": 2.5811716055619267,
+    "sharpe_annualized": -4.421157771823633,
+    "calmar": -0.5718503510972408,
+    "final_equity": 985.2395611111718
+  },
+  "comparison": {
+    "C_vs_A_roi_delta_pct": -2.4960460400403117,
+    "C_vs_A_winrate_delta": -0.12315270935960593,
+    "C_vs_A_sharpe_delta": -8.418261102051439,
+    "C_vs_B_roi_delta_pct": 0.4016678371961069,
+    "C_vs_B_winrate_delta": -0.025974025974025983
+  },
+  "synthetic_assumptions": {
+    "allora_directional_accuracy": 0.65,
+    "whale_directional_accuracy": 0.6,
+    "sentiment_method": "live source formula on real past returns",
+    "rng_seed": 42
+  }
+}

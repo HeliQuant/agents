@@ -1,0 +1,82 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Paperclip Agent Skill Manifests
+#  Each agent here points at one HTTP endpoint of our FastAPI worker
+#  (firm/app.py). Paperclip will heartbeat-trigger or issue-trigger them.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+#  Apply these to a running Paperclip instance via the CLI or REST API:
+#    paperclip agent apply -f paperclip/agents.yaml
+#
+#  Worker URL: http://host.docker.internal:8000 if Paperclip is in Docker,
+#  otherwise http://localhost:8000 for local dev.
+# ─────────────────────────────────────────────────────────────────────────────
+
+apiVersion: paperclip/v1
+kind: AgentCollection
+metadata:
+  name: mantle-trading-firm
+  description: AI Trading Firm on Mantle — 5 specialized agents
+
+agents:
+  - name: research
+    description: Scan news/X/Reddit + sentiment summarization (read-only)
+    adapter:
+      kind: http
+      url: ${secrets.WORKER_URL}/agent/research
+      method: POST
+      timeoutSeconds: 60
+    heartbeat:
+      schedule: "*/30 * * * *"   # every 30 min
+    budget:
+      monthlyUsd: 5.00
+    capabilities:
+      - read:news
+      - read:social
+
+  - name: signal
+    description: Fuse Allora prediction + proprietary ML model → trade decision
+    adapter:
+      kind: http
+      url: ${secrets.WORKER_URL}/agent/signal
+      method: POST
+      timeoutSeconds: 30
+    heartbeat:
+      schedule: "*/5 * * * *"    # every 5 min
+    budget:
+      monthlyUsd: 10.00
+    capabilities:
+      - read:allora
+      - read:ml-model
+
+  - name: risk
+    description: Position sizing + drawdown gate (per signal). Veto if breach.
+    adapter:
+      kind: http
+      url: ${secrets.WORKER_URL}/agent/risk
+      method: POST
+      timeoutSeconds: 10
+    capabilities:
+      - read:vault-state
+
+  - name: execution
+    description: Sign + submit DEX trade tx to TradingVault on Mantle
+    adapter:
+      kind: http
+      url: ${secrets.WORKER_URL}/agent/execution
+      method: POST
+      timeoutSeconds: 120
+    capabilities:
+      - write:onchain
+    approvalGates:
+      - kind: risk-agent-pass
+        message: Trade must have an "approved=true" RiskOutput from this run
+
+  - name: reputation
+    description: Post-trade ERC-8004 reputation update (auto-fired on JobSettled)
+    adapter:
+      kind: http
+      url: ${secrets.WORKER_URL}/agent/reputation
+      method: POST
+      timeoutSeconds: 30
+    capabilities:
+      - write:onchain

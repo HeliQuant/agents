@@ -1,0 +1,10 @@
+bar_idx,datetime,regime_current,regime_forward,fwd_conf,strategy,direction,entry,exit,outcome,bars_held,notional,net_pnl,equity_after,reasoning
+106,2026-03-06 05:02:43.691000+00:00,Ranging,Ranging,0.6635,mean_reversion,BUY,0.6989146993759386,0.6938198412578915,SL,5,950.0,-8.8252,991.17,BUY mean-reversion: RSI 20.3 <= 25.0 and close 0.6989 below EMA20 0.7016.
+350,2026-03-22 13:03:25.305000+00:00,Ranging,Ranging,0.9024,mean_reversion,BUY,0.7304948531273745,0.7251927108542179,SL,3,941.62,-8.7178,982.46,BUY mean-reversion: RSI 21.1 <= 25.0 and close 0.7305 below EMA20 0.7393.
+435,2026-03-28 14:02:18.869000+00:00,Ranging,Ranging,0.7894,mean_reversion,SELL,0.6847972276585602,0.6814761876005677,TP,1,933.33,2.6597,985.12,SELL mean-reversion: RSI 78.7 >= 75.0 and close 0.6848 above EMA20 0.6776.
+446,2026-03-29 06:02:12.996000+00:00,Trending_Down,Ranging,0.8617,mean_reversion,BUY,0.6743372423071362,0.6777966089055054,TP,5,935.86,2.9293,988.05,BUY mean-reversion: RSI 21.9 <= 25.0 and close 0.6743 below EMA20 0.6766.
+605,2026-04-09 08:02:39.960000+00:00,Trending_Down,Ranging,0.7588,mean_reversion,BUY,0.6577548913604401,0.6641887348509921,TP,7,938.64,7.3041,995.35,BUY mean-reversion: RSI 20.1 <= 25.0 and close 0.6578 below EMA20 0.6624.
+639,2026-04-11 13:46:29.364000+00:00,Ranging,Ranging,0.8475,mean_reversion,BUY,0.6758151033707525,0.6810474700374295,TP,4,945.58,5.4298,1000.78,BUY mean-reversion: RSI 19.2 <= 25.0 and close 0.6758 below EMA20 0.6791.
+806,2026-04-21 22:00:03.855000+00:00,Ranging,Ranging,0.9261,mean_reversion,BUY,0.6245117003896328,0.6310433250027747,TP,2,950.74,8.0421,1008.82,BUY mean-reversion: RSI 22.3 <= 25.0 and close 0.6245 below EMA20 0.6326.
+959,2026-05-03 18:00:27.978000+00:00,Ranging,Ranging,0.9371,mean_reversion,SELL,0.633425414146216,0.6311041218125039,TP,3,958.38,1.5954,1010.42,SELL mean-reversion: RSI 80.4 >= 75.0 and close 0.6334 above EMA20 0.6317.
+1027,2026-05-08 11:00:28.269000+00:00,Ranging,Ranging,0.6672,mean_reversion,SELL,0.6668259747634868,0.6641853623281049,TP,3,959.9,1.8814,1012.3,SELL mean-reversion: RSI 76.3 >= 75.0 and close 0.6668 above EMA20 0.6638.

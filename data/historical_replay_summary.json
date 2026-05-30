@@ -1,0 +1,41 @@
+{
+  "trades": 9,
+  "fired_signals": 9,
+  "held_signals": 1046,
+  "selectivity_pct": 0.8530805687203791,
+  "wins": 7,
+  "losses": 2,
+  "win_rate_pct": 77.77777777777779,
+  "total_pnl_usd": 12.298800000000002,
+  "roi_pct": 1.2298774611066987,
+  "profit_factor": 1.7010659522316596,
+  "max_drawdown_pct": 1.7539999999999965,
+  "sharpe_annualized": 20.723101330358503,
+  "final_equity": 1012.3,
+  "by_strategy": {
+    "mean_reversion": {
+      "trades": 9,
+      "wins": 7,
+      "avg_pnl": 1.367,
+      "total_pnl": 12.299
+    }
+  },
+  "by_regime": {
+    "Ranging": {
+      "trades": 7,
+      "wins": 5,
+      "avg_pnl": 0.295,
+      "total_pnl": 2.065
+    },
+    "Trending_Down": {
+      "trades": 2,
+      "wins": 2,
+      "avg_pnl": 5.117,
+      "total_pnl": 10.233
+    }
+  },
+  "by_outcome": {
+    "TP": 7,
+    "SL": 2
+  }
+}

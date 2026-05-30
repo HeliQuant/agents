@@ -1,0 +1,12 @@
+{
+  "asset": "MNT/USD",
+  "data_source": "CoinGecko market_chart days=90 (~hourly cadence)",
+  "n_train": 1019,
+  "n_test": 255,
+  "cv_mean_accuracy": 0.5735849056603775,
+  "cv_std_accuracy": 0.057275883911926534,
+  "test_accuracy": 0.5843137254901961,
+  "n_features": 39,
+  "model_class": "XGBClassifier",
+  "scale_pos_weight": 0.9671814671814671
+}
