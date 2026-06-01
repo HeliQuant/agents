@@ -541,13 +541,42 @@ def _crowding_factor(desks: list) -> tuple[float, str]:
     return 1.0, "no perp crowding signal (CONTRACT/spot asset)"
 
 
-def _edge_profile(ticker: str, regime: str) -> dict:
-    """Edge stats that UNLOCK aggressive sizing. validated = is there an OOS-validated trading edge
-    for this asset? (today trend-following is NOT validated -> SAFE). When a validated strategy
-    (e.g. OI-contrarian) is wired with its backtest p_win/payoff/sample, fill those -> AGGRESSIVE
-    sizing unlocks. Aggression earned by data, never faked: without p/b/sample it stays SAFE."""
-    return {"validated": bool(is_validated(ticker)), "p_win": None, "payoff_b": None, "sample_n": 0,
-            "note": "no OOS-validated trading edge wired for this asset/regime yet -> SAFE sizing"}
+def _oi_contrarian_signal(ticker: str) -> str | None:
+    """Live OI-contrarian signal from positioning data: OI 24h-change at top quintile -> SHORT
+    (fade crowded longs), bottom quintile -> LONG, else None. Same construction as scripts/39."""
+    try:
+        df = pd.read_csv(ROOT / "data" / f"{ticker.lower()}_positioning.csv")
+    except (FileNotFoundError, OSError):
+        return None
+    if "oi" not in df.columns or len(df) < 50:
+        return None
+    oichg = df["oi"].pct_change(24).dropna()
+    if oichg.empty:
+        return None
+    latest, p20, p80 = float(oichg.iloc[-1]), float(oichg.quantile(0.20)), float(oichg.quantile(0.80))
+    return "SHORT" if latest >= p80 else "LONG" if latest <= p20 else None
+
+
+def _edge_profile(ticker: str, regime: str, direction: str) -> dict:
+    """Stats that UNLOCK AGGRESSIVE sizing — returned ONLY when (a) the asset has an OOS-validated
+    edge in data/validated_edges.json (written by scripts/39) AND (b) that edge's live signal is
+    present AND agrees with the PM's direction. Otherwise SAFE. This stops a generic (e.g. trend)
+    trade from borrowing an unrelated edge — aggression must match a real, live, validated signal."""
+    try:
+        edges = json.loads((ROOT / "data" / "validated_edges.json").read_text())
+    except (FileNotFoundError, ValueError):
+        return {"validated": False, "note": "no validated_edges.json -> SAFE"}
+    e = edges.get(ticker.upper())
+    if not e:
+        return {"validated": False, "note": f"no OOS-validated edge for {ticker.upper()} -> SAFE"}
+    sig = _oi_contrarian_signal(ticker)
+    if sig and sig == direction.upper():
+        return {"validated": True, "p_win": e["p_win"], "payoff_b": e["payoff_b"],
+                "sample_n": e["sample_n"], "edge": e["edge"],
+                "note": f"{e['edge']} signal LIVE + aligned ({sig}); AGGRESSIVE unlocked (OOS {e['oos_roi_pct']}%)"}
+    return {"validated": False,
+            "note": f"{e['edge']} edge exists for {ticker.upper()} but live signal "
+                    f"{('=' + sig) if sig else 'absent'} != decision {direction.upper()} -> SAFE"}
 
 
 def _consensus(analysts: dict, direction: str) -> float:
@@ -575,7 +604,7 @@ def finalize_decision(ticker: str, decision: dict, desks: list, reg: dict,
     entry, atr = float(last["close"]), float(last["atr"])
     swing_low, swing_high = _swings(df)
     crowd_f, crowd_why = _crowding_factor(desks)
-    edge = _edge_profile(ticker, _regime)
+    edge = _edge_profile(ticker, _regime, dirn)
 
     attempt = 0
     while True:

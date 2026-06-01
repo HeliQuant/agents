@@ -266,10 +266,21 @@ if __name__ == "__main__":
         show(f"{direction} · SAFE conf=high", build_trade_ticket(
             ticker, direction, "high", last_price=entry, atr=atr, dynamic_rr=rr,
             swing_low=swing_low, swing_high=swing_high, equity=1000.0, allowlist=allow))
-    # AGGRESSIVE — HYPOTHETICAL validated edge (shows the engine CAN go big once data earns it)
-    print("--- IF an OOS-validated edge applied (HYPOTHETICAL p_win=0.62, payoff_b=1.8, n=40) ---")
-    hyp = {"validated": True, "p_win": 0.62, "payoff_b": 1.8, "sample_n": 40}
-    show("LONG · AGGRESSIVE (validated edge)", build_trade_ticket(
+    # AGGRESSIVE — use the asset's REAL OOS-validated edge if one exists (else a labeled hypothetical)
+    import json
+    real_edge = {}
+    try:
+        real_edge = json.loads((ROOT / "data" / "validated_edges.json").read_text()).get(ticker.upper(), {})
+    except (FileNotFoundError, ValueError):
+        pass
+    if real_edge.get("validated"):
+        print(f"--- {ticker.upper()} has an OOS-VALIDATED edge: {real_edge['edge']} "
+              f"(REAL backtest p_win={real_edge['p_win']}, payoff_b={real_edge['payoff_b']}, n={real_edge['sample_n']}) ---")
+        edge = real_edge
+    else:
+        print("--- IF an OOS-validated edge applied (HYPOTHETICAL p_win=0.62, payoff_b=1.8, n=40) ---")
+        edge = {"validated": True, "p_win": 0.62, "payoff_b": 1.8, "sample_n": 40}
+    show("LONG · AGGRESSIVE", build_trade_ticket(
         ticker, "LONG", "high", last_price=entry, atr=atr, dynamic_rr=rr,
         swing_low=swing_low, swing_high=swing_high, equity=1000.0, allowlist=allow,
-        edge=hyp, regime_conf=0.9, consensus=0.8))
+        edge=edge, regime_conf=0.9, consensus=0.8))
