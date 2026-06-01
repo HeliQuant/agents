@@ -15,6 +15,7 @@ Each decision + lesson is also mirrored to a human-browsable Markdown note in th
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 
@@ -45,6 +46,41 @@ CREATE TABLE IF NOT EXISTS decisions (
 CREATE INDEX IF NOT EXISTS idx_dec_ticker_regime ON decisions(ticker, regime);
 CREATE INDEX IF NOT EXISTS idx_dec_status ON decisions(status);
 """
+
+
+def _env(key: str) -> str | None:
+    """Read a config value from the environment, falling back to agents/.env (BOM-tolerant)."""
+    v = os.environ.get(key)
+    if v:
+        return v
+    for enc in ("utf-8-sig", "utf-16", "latin-1"):
+        try:
+            for line in (ROOT / ".env").read_text(encoding=enc).splitlines():
+                line = line.lstrip("﻿").strip()
+                if line.startswith(f"{key}="):
+                    return line.split("=", 1)[1].strip()
+        except (UnicodeError, ValueError, FileNotFoundError):
+            continue
+    return None
+
+
+def _brief_text(ticker: str, recalled: list[dict]) -> str:
+    """Factual memory brief for the PM context (no invented 'lessons'). Shared by both backends."""
+    if not recalled:
+        return f"AGENT MEMORY: no prior resolved {ticker.upper()} trades (cold start)."
+    items, wins, losses = [], 0, 0
+    for r in recalled:
+        if r.get("decision") == "ENTER" and r.get("outcome"):
+            items.append(f"{r['regime']}/{r['direction']} {r['outcome']} {(r['pnl_pct'] or 0):+.2f}%")
+            if (r.get("pnl_pct") or 0) > 0:
+                wins += 1
+            else:
+                losses += 1
+        else:
+            items.append(f"{r.get('regime')}/ABSTAIN")
+    return (f"AGENT MEMORY — last {len(recalled)} resolved {ticker.upper()} decisions: "
+            f"[{', '.join(items)}]. Resolved ENTERs: {wins}W/{losses}L. "
+            f"(Recency+regime recall; weigh this history in your decision.)")
 
 
 class MemoryStore:
@@ -120,23 +156,7 @@ class MemoryStore:
 
     def brief(self, ticker: str, regime: str | None = None, k: int = 5) -> str:
         """A compact, FACTUAL memory brief for the PM context (no invented 'lessons')."""
-        recalled = self.recall(ticker, regime, k)
-        if not recalled:
-            return f"AGENT MEMORY: no prior resolved {ticker.upper()} trades (cold start)."
-        items, wins, losses = [], 0, 0
-        for r in recalled:
-            if r["decision"] == "ENTER" and r["outcome"]:
-                tag = f"{r['regime']}/{r['direction']} {r['outcome']} {r['pnl_pct']:+.2f}%"
-                if (r["pnl_pct"] or 0) > 0:
-                    wins += 1
-                else:
-                    losses += 1
-            else:
-                tag = f"{r['regime']}/ABSTAIN"
-            items.append(tag)
-        return (f"AGENT MEMORY — last {len(recalled)} resolved {ticker.upper()} decisions: "
-                f"[{', '.join(items)}]. Resolved ENTERs: {wins}W/{losses}L. "
-                f"(Recency+regime recall; weigh this history in your decision.)")
+        return _brief_text(ticker, self.recall(ticker, regime, k))
 
     def stats(self) -> dict:
         c = self.conn.execute(
@@ -186,24 +206,73 @@ class MemoryStore:
         self._write_note("lessons", f"{r['id']}_{r['ticker']}_{r['outcome']}", body)
 
 
-# ── Supabase / pgvector adapter (production) — documented stub ──────────────────
+# ── Supabase / pgvector adapter (production) — same interface as MemoryStore ──────
 class SupabaseMemoryStore:
-    """PROD backend (same interface as MemoryStore). Not wired until creds are provided.
+    """Production backend: Postgres (+pgvector) via the supabase client. Drop-in for MemoryStore so
+    the autonomous loop is backend-agnostic. Needs `pip install supabase` + SUPABASE_URL/SUPABASE_KEY
+    (service_role) in env/.env + the `decisions` table (schema shipped in the repo / org reply).
+    Recall is recency+regime now; swap to a pgvector RPC for semantic recall (loop code unchanged)."""
 
-    Setup (when ready):
-      1. Supabase project -> SQL editor -> `create extension if not exists vector;`
-      2. table `decisions` mirrors the SQLite schema above + a `regime_embedding vector(1536)` column.
-      3. env: SUPABASE_URL, SUPABASE_KEY ; pip install supabase
-      4. `recall()` becomes a pgvector cosine search over regime/desk-context embeddings (semantic),
-         replacing the SQLite recency+regime match — the loop code is unchanged.
-    """
+    TABLE = "decisions"
 
-    def __init__(self, *_, **__):
-        raise NotImplementedError(
-            "SupabaseMemoryStore is a documented stub — provide SUPABASE_URL/KEY and run the "
-            "schema, then implement record_decision/record_outcome/recall against the table. "
-            "Until then use MemoryStore (SQLite)."
-        )
+    def __init__(self, url: str | None = None, key: str | None = None):
+        try:
+            from supabase import create_client
+        except ImportError as e:  # pragma: no cover
+            raise RuntimeError("pip install supabase to use SupabaseMemoryStore") from e
+        url, key = url or _env("SUPABASE_URL"), key or _env("SUPABASE_KEY")
+        if not (url and key):
+            raise RuntimeError("set SUPABASE_URL + SUPABASE_KEY (service_role) in env/.env")
+        self.client = create_client(url, key)
+
+    def record_decision(self, ts: str, ticker: str, regime: str, decision: dict) -> int:
+        tk = decision.get("trade_ticket") or {}
+        tps = tk.get("take_profit") or [{}]
+        row = {
+            "ts": ts, "ticker": ticker.upper(), "regime": regime,
+            "decision": decision.get("decision"), "direction": decision.get("direction"),
+            "confidence": decision.get("confidence"),
+            "entry": tk.get("entry"), "stop_loss": tk.get("stop_loss"), "tp1": tps[0].get("price"),
+            "reasoning": str(decision.get("reasoning", ""))[:500], "ticket_json": tk or None,
+            "status": "open" if (decision.get("decision") == "ENTER" and tk) else "abstain",
+        }
+        res = self.client.table(self.TABLE).insert(row).execute()
+        return int(res.data[0]["id"]) if res.data else -1
+
+    def record_outcome(self, rid: int, outcome: str, pnl_pct: float,
+                       exit_price: float, resolved_ts: str) -> None:
+        self.client.table(self.TABLE).update(
+            {"status": "resolved", "outcome": outcome, "pnl_pct": pnl_pct,
+             "exit_price": exit_price, "resolved_ts": resolved_ts}).eq("id", rid).execute()
+
+    def open_tickets(self, ticker: str | None = None) -> list[dict]:
+        q = self.client.table(self.TABLE).select("*").eq("status", "open")
+        if ticker:
+            q = q.eq("ticker", ticker.upper())
+        return q.execute().data or []
+
+    def recall(self, ticker: str, regime: str | None = None, k: int = 5) -> list[dict]:
+        rows = (self.client.table(self.TABLE)
+                .select("ticker,regime,decision,direction,outcome,pnl_pct,ts")
+                .eq("ticker", ticker.upper()).eq("status", "resolved")
+                .order("id", desc=True).limit(k).execute().data) or []
+        if regime:  # regime-match first (mirrors the SQLite ORDER BY regime=? DESC)
+            rows.sort(key=lambda r: r.get("regime") == regime, reverse=True)
+        return rows
+
+    def brief(self, ticker: str, regime: str | None = None, k: int = 5) -> str:
+        return _brief_text(ticker, self.recall(ticker, regime, k))
+
+    def stats(self) -> dict:
+        rows = self.client.table(self.TABLE).select("status,pnl_pct").execute().data or []
+        r = sum(x["status"] == "resolved" for x in rows)
+        w = sum(x["status"] == "resolved" and (x.get("pnl_pct") or 0) > 0 for x in rows)
+        return {"total": len(rows), "open": sum(x["status"] == "open" for x in rows),
+                "resolved": r, "abstain": sum(x["status"] == "abstain" for x in rows),
+                "resolved_winrate": round(w / r * 100, 1) if r else None}
+
+    def close(self) -> None:
+        pass
 
 
 if __name__ == "__main__":
