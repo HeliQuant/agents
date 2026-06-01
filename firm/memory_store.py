@@ -24,7 +24,7 @@ DB_PATH = ROOT / "data" / "heliquant_memory.db"
 VAULT = ROOT / "knowledge"  # Obsidian-compatible markdown vault (agent notes + human research)
 
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS decisions (
+CREATE TABLE IF NOT EXISTS decisions_hq (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     ts          TEXT NOT NULL,
     ticker      TEXT NOT NULL,
@@ -43,8 +43,8 @@ CREATE TABLE IF NOT EXISTS decisions (
     exit_price  REAL,
     resolved_ts TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_dec_ticker_regime ON decisions(ticker, regime);
-CREATE INDEX IF NOT EXISTS idx_dec_status ON decisions(status);
+CREATE INDEX IF NOT EXISTS idx_dec_ticker_regime ON decisions_hq(ticker, regime);
+CREATE INDEX IF NOT EXISTS idx_dec_status ON decisions_hq(status);
 """
 
 
@@ -94,7 +94,7 @@ class MemoryStore:
         self.conn.executescript(_SCHEMA)
         self.conn.commit()
         if self.vault:
-            for sub in ("decisions", "lessons"):
+            for sub in ("decisions_hq", "lessons"):
                 (self.vault / sub).mkdir(parents=True, exist_ok=True)
 
     # ── write ────────────────────────────────────────────────────────────────
@@ -113,7 +113,7 @@ class MemoryStore:
             "status": "open" if is_enter else "abstain",
         }
         cur = self.conn.execute(
-            "INSERT INTO decisions (ts,ticker,regime,decision,direction,confidence,entry,"
+            "INSERT INTO decisions_hq (ts,ticker,regime,decision,direction,confidence,entry,"
             "stop_loss,tp1,reasoning,ticket_json,status) VALUES "
             "(:ts,:ticker,:regime,:decision,:direction,:confidence,:entry,:stop_loss,:tp1,"
             ":reasoning,:ticket_json,:status)", row,
@@ -127,17 +127,17 @@ class MemoryStore:
                        exit_price: float, resolved_ts: str) -> None:
         """Resolve an open trade (TP/SL/TIMEOUT) — the LEARN step."""
         self.conn.execute(
-            "UPDATE decisions SET status='resolved', outcome=?, pnl_pct=?, exit_price=?, "
+            "UPDATE decisions_hq SET status='resolved', outcome=?, pnl_pct=?, exit_price=?, "
             "resolved_ts=? WHERE id=?", (outcome, pnl_pct, exit_price, resolved_ts, rid),
         )
         self.conn.commit()
-        r = self.conn.execute("SELECT * FROM decisions WHERE id=?", (rid,)).fetchone()
+        r = self.conn.execute("SELECT * FROM decisions_hq WHERE id=?", (rid,)).fetchone()
         if r:
             self._note_lesson(dict(r))
 
     # ── read / recall ──────────────────────────────────────────────────────────
     def open_tickets(self, ticker: str | None = None) -> list[dict]:
-        q = "SELECT * FROM decisions WHERE status='open'"
+        q = "SELECT * FROM decisions_hq WHERE status='open'"
         args: tuple = ()
         if ticker:
             q += " AND ticker=?"
@@ -148,7 +148,7 @@ class MemoryStore:
         """Most recent RESOLVED decisions for this ticker (regime-matched first). The recall
         the PM learns from. (Recency+regime now; pgvector semantic recall = Supabase upgrade.)"""
         rows = self.conn.execute(
-            "SELECT ticker,regime,decision,direction,outcome,pnl_pct,ts FROM decisions "
+            "SELECT ticker,regime,decision,direction,outcome,pnl_pct,ts FROM decisions_hq "
             "WHERE ticker=? AND status='resolved' ORDER BY (regime=?) DESC, id DESC LIMIT ?",
             (ticker.upper(), regime or "", k),
         ).fetchall()
@@ -161,7 +161,7 @@ class MemoryStore:
     def stats(self) -> dict:
         c = self.conn.execute(
             "SELECT COUNT(*) n, SUM(status='open') o, SUM(status='resolved') r, "
-            "SUM(status='abstain') a, SUM(status='resolved' AND pnl_pct>0) w FROM decisions"
+            "SUM(status='abstain') a, SUM(status='resolved' AND pnl_pct>0) w FROM decisions_hq"
         ).fetchone()
         n, o, r, a, w = (c["n"] or 0, c["o"] or 0, c["r"] or 0, c["a"] or 0, c["w"] or 0)
         return {"total": n, "open": o, "resolved": r, "abstain": a,
@@ -192,7 +192,7 @@ class MemoryStore:
                      f"- TP: " + " · ".join(f"{t.get('label')} {t.get('price')} (R:R {t.get('rr')})" for t in tp) +
                      f"\n- size: risk {tk.get('risk_pct')}% -> ${tk.get('notional_usd')} ({tk.get('position_size_pct')}% eq)\n")
         body += f"\nLinked: [[{row['ticker']}-history]] · [[trade-ticket-method]]\n"
-        self._write_note("decisions", f"{row['ts'].replace(':', '').replace(' ', '_')}_{row['ticker']}_{rid}", body)
+        self._write_note("decisions_hq", f"{row['ts'].replace(':', '').replace(' ', '_')}_{row['ticker']}_{rid}", body)
 
     def _note_lesson(self, r: dict) -> None:
         verdict = "WIN" if (r.get("pnl_pct") or 0) > 0 else "LOSS"
@@ -210,10 +210,10 @@ class MemoryStore:
 class SupabaseMemoryStore:
     """Production backend: Postgres (+pgvector) via the supabase client. Drop-in for MemoryStore so
     the autonomous loop is backend-agnostic. Needs `pip install supabase` + SUPABASE_URL/SUPABASE_KEY
-    (service_role) in env/.env + the `decisions` table (schema shipped in the repo / org reply).
+    (service_role) in env/.env + the `decisions_hq` table (schema shipped in the repo / org reply).
     Recall is recency+regime now; swap to a pgvector RPC for semantic recall (loop code unchanged)."""
 
-    TABLE = "decisions"
+    TABLE = "decisions_hq"
 
     def __init__(self, url: str | None = None, key: str | None = None):
         try:
