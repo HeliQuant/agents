@@ -139,7 +139,7 @@ def replay(ticker: str, bars: int | None = None) -> None:
 
 
 # ─────────────────────────────── LIVE tick (real LLM org) ───────────────────────────────
-def once(ticker: str, mem: MemoryStore | None = None) -> dict:
+def once(ticker: str, mem: MemoryStore | None = None, broadcast: bool = False) -> dict:
     from firm import organization as org
 
     own = mem is None
@@ -154,21 +154,30 @@ def once(ticker: str, mem: MemoryStore | None = None) -> dict:
     dec = res.get("decision", {})
     ts = _now()
     rid = mem.record_decision(ts, ticker, regime, dec)
-    rec = anchor(dec, ticker, ts, send=False)  # Line-2: DRY on-chain anchor (--send + key to broadcast)
-    print(f"\n[EXECUTE] recorded id={rid} ({dec.get('decision')} {dec.get('direction', '')}) "
-          f"| Mantle anchor {rec['record_hash'][:18]}... (DRY)")
+    # broadcast-on-ENTER: a real trade goes on-chain (live Mantle tx); ABSTAIN stays DRY (gas-frugal)
+    is_enter = dec.get("decision") == "ENTER"
+    rec = anchor(dec, ticker, ts, send=broadcast and is_enter)
+    if rec.get("sent"):
+        amsg = f"on-chain BROADCAST {rec['tx_hash'][:14]}... -> {rec.get('explorer')}"
+    elif rec.get("error"):
+        amsg = f"anchor DRY {rec['record_hash'][:14]}... (broadcast err: {rec['error'][:40]})"
+    else:
+        why = "ABSTAIN -> DRY, gas-frugal" if not is_enter else "broadcast off (pass --broadcast)"
+        amsg = f"anchor DRY {rec['record_hash'][:14]}... ({why})"
+    print(f"\n[EXECUTE] recorded id={rid} ({dec.get('decision')} {dec.get('direction', '')}) | {amsg}")
     print(f"[MEMORY] {mem.stats()}")
     if own:
         mem.close()
     return dec
 
 
-def loop(ticker: str, interval: int) -> None:
-    print(f"=== AUTONOMOUS LOOP · LIVE every {interval}s on {ticker.upper()} (Ctrl-C to stop) ===")
+def loop(ticker: str, interval: int, broadcast: bool = False) -> None:
+    print(f"=== AUTONOMOUS LOOP · LIVE every {interval}s on {ticker.upper()} "
+          f"(broadcast-on-ENTER={broadcast}, Ctrl-C to stop) ===")
     mem = get_memory_store()
     try:
         while True:
-            once(ticker, mem=mem)
+            once(ticker, mem=mem, broadcast=broadcast)
             print(f"\n[REST] sleeping {interval}s...\n")
             time.sleep(interval)
     except KeyboardInterrupt:
@@ -184,12 +193,15 @@ if __name__ == "__main__":
     ap.add_argument("--interval", type=int, help="always-on live loop, seconds between ticks")
     ap.add_argument("--ticker", default="mnt", help="ticker for --interval mode")
     ap.add_argument("--bars", type=int, help="limit replay to the last N bars")
+    ap.add_argument("--broadcast", action="store_true",
+                    help="broadcast the on-chain anchor for ENTER decisions (live Mantle tx)")
     args = ap.parse_args()
     if args.replay:
         replay(args.replay, args.bars)
     elif args.once:
-        once(args.once)
+        once(args.once, broadcast=args.broadcast)
     elif args.interval:
-        loop(args.ticker, args.interval)
+        loop(args.ticker, args.interval, broadcast=args.broadcast)
     else:
-        print("usage: --replay TICKER [--bars N] | --once TICKER | --interval SEC --ticker T")
+        print("usage: --replay TICKER [--bars N] | --once TICKER [--broadcast] | "
+              "--interval SEC --ticker T [--broadcast]")
