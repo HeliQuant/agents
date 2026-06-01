@@ -31,14 +31,15 @@ def _env(key: str) -> str | None:
     v = os.environ.get(key)
     if v:
         return v
-    for enc in ("utf-8-sig", "utf-16", "latin-1"):
-        try:
-            for line in (ROOT / ".env").read_text(encoding=enc).splitlines():
-                line = line.lstrip("﻿").strip()
-                if line.startswith(f"{key}="):
-                    return line.split("=", 1)[1].strip()
-        except (UnicodeError, ValueError, FileNotFoundError):
-            continue
+    for envfile in (ROOT / ".env", ROOT.parent / ".env"):  # agents/.env, then project-root .env (on-chain config)
+        for enc in ("utf-8-sig", "utf-16", "latin-1"):
+            try:
+                for line in envfile.read_text(encoding=enc).splitlines():
+                    line = line.lstrip("﻿").strip()
+                    if line.startswith(f"{key}="):
+                        return line.split("=", 1)[1].split("#")[0].strip().strip('"').strip("'")
+            except (UnicodeError, ValueError, FileNotFoundError):
+                continue
     return None
 
 
@@ -75,9 +76,9 @@ def anchor(decision: dict, ticker: str, ts: str, *, send: bool = False) -> dict:
     except ImportError:
         out["error"] = "pip install web3 eth-account to broadcast"
         return out
-    pk = _env("EXECUTOR_PRIVATE_KEY")
+    pk = _env("EXECUTOR_PRIVATE_KEY") or _env("DEPLOYER_PRIVATE_KEY")  # testnet: deployer doubles as executor
     if not pk:
-        out["error"] = "set EXECUTOR_PRIVATE_KEY in env/.env to broadcast (testnet wallet only)"
+        out["error"] = "set EXECUTOR_PRIVATE_KEY (or DEPLOYER_PRIVATE_KEY) in env/.env to broadcast (testnet only)"
         return out
     rpc = _env("MANTLE_SEPOLIA_RPC_URL") or MANTLE_SEPOLIA_RPC
     w3 = Web3(Web3.HTTPProvider(rpc))
@@ -100,8 +101,8 @@ if __name__ == "__main__":
     import sys
 
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
-    sample = {"decision": "ENTER", "direction": "LONG", "confidence": "high",
-              "trade_ticket": {"entry": 0.672, "stop_loss": 0.655,
-                               "take_profit": [{"price": 0.70}], "risk_pct": 3.0, "mode": "AGGRESSIVE"}}
-    send = "--send" in sys.argv
-    print(json.dumps(anchor(sample, "MNT", "2026-06-02 12:00", send=send), indent=2))
+    # Honest demo record: MNT's REAL disciplined stance (ranging, no validated edge -> ABSTAIN).
+    sample = {"decision": "ABSTAIN", "direction": "NONE", "confidence": "low",
+              "reasoning": "MNT ranging; no OOS-validated edge + R:R<2 gate -> disciplined abstain",
+              "trade_ticket": None}
+    print(json.dumps(anchor(sample, "MNT", "2026-06-02 manual-demo", send="--send" in sys.argv), indent=2))
