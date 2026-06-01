@@ -33,6 +33,7 @@ import pandas as pd  # noqa: E402
 
 from firm import trade_ticket as tt  # noqa: E402
 from firm.memory_store import MemoryStore  # noqa: E402
+from firm.onchain_recorder import anchor  # noqa: E402
 
 # multi_asset lives in scripts/ (not a package) — load it directly
 _spec = importlib.util.spec_from_file_location("multi_asset", ROOT / "scripts" / "multi_asset.py")
@@ -151,8 +152,11 @@ def once(ticker: str, mem: MemoryStore | None = None) -> dict:
     print(f"\n[RECALL] {brief}\n")
     res = org.run_organization(ticker, verbose=True, memory_brief=brief)
     dec = res.get("decision", {})
-    rid = mem.record_decision(_now(), ticker, regime, dec)
-    print(f"\n[EXECUTE] recorded decision id={rid}: {dec.get('decision')} {dec.get('direction', '')}")
+    ts = _now()
+    rid = mem.record_decision(ts, ticker, regime, dec)
+    rec = anchor(dec, ticker, ts, send=False)  # Line-2: DRY on-chain anchor (--send + key to broadcast)
+    print(f"\n[EXECUTE] recorded id={rid} ({dec.get('decision')} {dec.get('direction', '')}) "
+          f"| Mantle anchor {rec['record_hash'][:18]}... (DRY)")
     print(f"[MEMORY] {mem.stats()}")
     if own:
         mem.close()
