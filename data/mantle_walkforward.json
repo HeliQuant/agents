@@ -1,0 +1,70 @@
+{
+  "MNT": {
+    "ticker": "MNT",
+    "verdict": "OVERFIT",
+    "is_roi": 10.6,
+    "is_win": 59.2,
+    "is_trades": 49,
+    "oos_roi": -10.32,
+    "oos_win": 41.2,
+    "oos_trades": 51,
+    "config": {
+      "rsi": "30/70",
+      "tp_atr": 1.5,
+      "flat_pct": 2.0,
+      "conf": 0.6
+    },
+    "data": "Pyth 1yr hourly OHLC (benchmarks.pyth.network)"
+  },
+  "METH": {
+    "ticker": "METH",
+    "verdict": "OVERFIT",
+    "is_roi": 6.48,
+    "is_win": 58.3,
+    "is_trades": 36,
+    "oos_roi": -0.79,
+    "oos_win": 50.0,
+    "oos_trades": 24,
+    "config": {
+      "rsi": "30/80",
+      "tp_atr": 1.5,
+      "flat_pct": 3.0,
+      "conf": 0.65
+    },
+    "data": "Pyth 1yr hourly OHLC (benchmarks.pyth.network)"
+  },
+  "CMETH": {
+    "ticker": "CMETH",
+    "verdict": "OVERFIT",
+    "is_roi": -0.25,
+    "is_win": 60.0,
+    "is_trades": 5,
+    "oos_roi": -2.57,
+    "oos_win": 0.0,
+    "oos_trades": 4,
+    "config": {
+      "rsi": "25/80",
+      "tp_atr": 1.5,
+      "flat_pct": 5.0,
+      "conf": 0.6
+    },
+    "data": "Pyth 1yr hourly OHLC (benchmarks.pyth.network)"
+  },
+  "FBTC": {
+    "ticker": "FBTC",
+    "verdict": "OVERFIT",
+    "is_roi": 2.97,
+    "is_win": 60.0,
+    "is_trades": 10,
+    "oos_roi": -3.42,
+    "oos_win": 35.7,
+    "oos_trades": 14,
+    "config": {
+      "rsi": "20/70",
+      "tp_atr": 1.5,
+      "flat_pct": 3.0,
+      "conf": 0.6
+    },
+    "data": "Pyth 1yr hourly OHLC (benchmarks.pyth.network)"
+  }
+}

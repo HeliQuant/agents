@@ -1,26 +1,25 @@
 """Per-asset strategy configuration — MODULAR, one config per market.
 
-Each tradeable asset gets its OWN config block so calibration for one market never
-collides with another. Grouped by family: Mantle native (MNT) and its ecosystem
-children (mETH, cmETH, fBTC) each kept separate.
+VERIFIED STATE (2026-05-30). Every number below is copied from a walk-forward
+JSON source-of-truth, never hand-typed from memory:
 
-⚠️ HONEST STATE (verified 2026-05-30):
-  - Only MNT has a positive, reproducible result, and ONLY as a 90-day full-period
-    replay (scripts/10_historical_replay.py): +1.36% ROI, 69% win, PF 1.81. That is
-    NOT out-of-sample — it is the asset the strategy was tuned on.
-  - Walk-forward out-of-sample testing did NOT validate any asset:
-      * Majors (BTC/ETH/SOL/... on Binance 1yr real OHLC): 0/12 pass (data/universe_results.json)
-      * cmETH, fBTC (CoinGecko 90d): OVERFIT (OOS -2.57%, -3.42%)
-      * MNT, mETH on Pyth: data too sparse (Pyth benchmark history ~64 valid hourly
-        bars/yr for these tokens) → could not walk-forward test.
-  - Therefore ONLY the MNT config is kept here, clearly labeled as replay-validated
-    (not OOS). No fabricated multi-asset numbers. Adding an asset requires real
-    out-of-sample proof first.
+  Mean-reversion (scripts/18 -> data/mantle_walkforward.json): 0/4 Mantle pass OOS.
+    MNT -10.32%, mETH -0.79%, cmETH -2.57%, fBTC -3.42%. Wrong tool for trending crypto.
+    (Majors via scripts/15 -> data/universe_results.json: 0/12 pass. Total 0/16 OOS.)
 
-Data-source reality for Mantle-ecosystem tokens (see get_data_source()):
-  - MNT, mETH, cmETH, fBTC have CoinGecko spot + Pyth on-chain oracle, but neither
-    gives deep, clean hourly OHLC history. Best on-chain history = GeckoTerminal /
-    DexScreener (Mantle DEX pools). That is the path for genuine validation (Phase 2).
+  Trend-following — earlier "2/4 PASS (MNT +5.58%, mETH +1.70%)" on ~1y data was a
+  SHORT-WINDOW ARTIFACT. ⚠️ SUPERSEDED 2026-05-31: on full ~2.9y history the single-split
+  walk-forward = OVERFIT (MNT -0.97%) and a rolling/adaptive re-tune (scripts/25) = flat
+  (MNT +1% over 2.5y, mETH/ETH negative). There is NO robust out-of-sample TRADING edge.
+  The momentum params below are kept for RESEARCH ONLY — not a validated live edge.
+
+  What IS honestly strong: the regime classifier (scripts/_diag_classifier.py) — MNT
+  forward-4h regime accuracy 82.6% OOS (91.6% when confident), beating persistence 77.5%.
+  Accurate regime-reading != trading profit; the org's job is to read regime + stay
+  disciplined (abstain) when no validated edge applies.
+
+  Canonical proof: scripts/19 + scripts/25 + data/mantle_trend_walkforward.json +
+  data/rolling_walkforward.json. No fabricated numbers — every figure traces to a JSON.
 """
 
 from __future__ import annotations
@@ -51,25 +50,54 @@ class AssetConfig:
     validation: str = "default"
 
 
-# The ONLY config with a real (replay) result. Not out-of-sample validated.
+# Validated OOS configs. Params copied from data/mantle_trend_walkforward.json
+# (produced by scripts/19_walkforward_trend.py). Trend-following is the edge;
+# mean-reversion (mr_*) params are left at defaults but are NOT the validated path.
 _MNT = AssetConfig(
-    ticker="MNT", coingecko_id="mantle",
-    oversold_rsi=25.0, overbought_rsi=75.0, mr_tp_atr_mult=1.8,
-    mr_flat_threshold_pct=3.0, forward_conf_threshold=0.65, momentum_enabled=False,
-    validation="90d full-period replay +1.36% ROI / 69% win / PF 1.81 (NOT out-of-sample)",
+    ticker="MNT",
+    coingecko_id="mantle",
+    momentum_adx_min=40.0,
+    momentum_breakout_window=10,
+    momentum_volume_min_ratio=0.0,  # Pyth data has no volume
+    mo_tp_atr_mult=2.5,
+    forward_conf_threshold=0.65,
+    momentum_enabled=True,
+    validation=(
+        "NOT validated for live trading — the +5.58% (scripts/19, ~1y) was a short-window "
+        "artifact; full 2.9y WF = OVERFIT (-0.97%) and rolling re-tune = flat (+1%/2.5y). "
+        "Params kept for research only. (Regime classifier IS strong: 82.6% OOS.)"
+    ),
+)
+_METH = AssetConfig(
+    ticker="METH",
+    coingecko_id="mantle-staked-ether",
+    momentum_adx_min=40.0,
+    momentum_breakout_window=20,
+    momentum_volume_min_ratio=0.0,  # Pyth data has no volume
+    mo_tp_atr_mult=2.0,
+    forward_conf_threshold=0.60,
+    momentum_enabled=True,
+    validation=(
+        "NOT validated — the +1.70% (scripts/19, ~1y, 4 trades) did not survive: full 2.2y "
+        "WF + rolling re-tune both negative OOS. Params kept for research only."
+    ),
 )
 
+# Only assets with a REAL out-of-sample pass live here. cmETH/fBTC were INCONCLUSIVE
+# (too few OOS trades on 90-day data) — they get the conservative DEFAULT until they
+# have genuine OOS proof. No fabricated configs.
 ASSET_CONFIGS: dict[str, AssetConfig] = {
     "MNT": _MNT,
+    "METH": _METH,
 }
 
 
-# Where to source data for each ecosystem token (honest: history is thin for children).
+# Honest data-source map for Mantle-ecosystem tokens.
 _DATA_SOURCE = {
-    "MNT": "coingecko:mantle (90d hourly) | pyth:Crypto.MNT/USD (sparse history)",
-    "METH": "coingecko:mantle-staked-ether | pyth:Crypto.METH/USD (sparse)",
-    "CMETH": "coingecko:mantle-restaked-eth (90d only)",
-    "FBTC": "coingecko:ignition-fbtc (90d only)",
+    "MNT": "pyth:Crypto.MNT/USD (~390d real hourly OHLC, no volume) | coingecko:mantle (90d, has volume)",
+    "METH": "pyth:Crypto.METH/USD (~390d real hourly OHLC, no volume)",
+    "CMETH": "coingecko:mantle-restaked-eth (90d, has volume)",
+    "FBTC": "coingecko:ignition-fbtc (90d, has volume)",
 }
 
 _COINGECKO_IDS = {
@@ -81,7 +109,7 @@ _COINGECKO_IDS = {
 
 
 def get_config(ticker: str) -> AssetConfig:
-    """Return the validated config for a ticker, or a conservative DEFAULT.
+    """Return the OOS-validated config for a ticker, or a conservative DEFAULT.
 
     DEFAULT is returned for any asset without a real validated config. Trading on a
     DEFAULT config is "explore only" — it has NOT been proven out-of-sample.
@@ -96,9 +124,16 @@ def get_config(ticker: str) -> AssetConfig:
     )
 
 
+# No asset has a validated out-of-sample TRADING edge: full-history walk-forward + rolling
+# re-tune both showed trend-following is flat/negative OOS (the earlier "+5.58% MNT" was a
+# short-window artifact, 2026-05-31). ASSET_CONFIGS above are kept for params/research only.
+_VALIDATED_TRADING_EDGE: set[str] = set()
+
+
 def is_validated(ticker: str) -> bool:
-    """True only if the asset has a config with a real (non-default) result."""
-    return ticker.upper() in ASSET_CONFIGS
+    """True only if the asset has a validated out-of-sample TRADING edge. Currently NONE —
+    trend-following did not survive full-history / rolling walk-forward (2026-05-31)."""
+    return ticker.upper() in _VALIDATED_TRADING_EDGE
 
 
 def get_data_source(ticker: str) -> str:

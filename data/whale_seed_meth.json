@@ -1,0 +1,18 @@
+{
+  "token": "mETH",
+  "contract": "0xcDA86A272531e8640cD7F1a92c01839911B90bb0",
+  "wallets": [
+    {
+      "address": "0x334f12afb7d8740868be04719639616533075234",
+      "meth_now": 684.931,
+      "usd_now": 1493149,
+      "nonce": 3
+    },
+    {
+      "address": "0x537037c5ae805b9d4cecab5ee07f12a8e59a15b2",
+      "meth_now": 200.135,
+      "usd_now": 436294,
+      "nonce": 106
+    }
+  ]
+}

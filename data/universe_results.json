@@ -1,0 +1,194 @@
+{
+  "BTC": {
+    "ticker": "BTC",
+    "verdict": "OVERFIT",
+    "bars": 8734,
+    "is_roi": 0.1,
+    "is_win": 56.5,
+    "is_trades": 46,
+    "oos_roi": -2.8,
+    "oos_win": 43.8,
+    "oos_trades": 16,
+    "config": {
+      "rsi": "25/75",
+      "tp": 1.5,
+      "flat": 3.0,
+      "conf": 0.65
+    }
+  },
+  "ETH": {
+    "ticker": "ETH",
+    "verdict": "OVERFIT",
+    "bars": 8734,
+    "is_roi": 1.64,
+    "is_win": 56.2,
+    "is_trades": 16,
+    "oos_roi": -4.75,
+    "oos_win": 35.3,
+    "oos_trades": 17,
+    "config": {
+      "rsi": "25/80",
+      "tp": 1.5,
+      "flat": 2.0,
+      "conf": 0.6
+    }
+  },
+  "SOL": {
+    "ticker": "SOL",
+    "verdict": "OVERFIT",
+    "bars": 8734,
+    "is_roi": 2.96,
+    "is_win": 53.8,
+    "is_trades": 26,
+    "oos_roi": -4.95,
+    "oos_win": 40.0,
+    "oos_trades": 25,
+    "config": {
+      "rsi": "25/75",
+      "tp": 1.5,
+      "flat": 2.0,
+      "conf": 0.6
+    }
+  },
+  "MNT": {
+    "ticker": "MNT",
+    "verdict": "NO_DATA",
+    "bars": 0
+  },
+  "ENA": {
+    "ticker": "ENA",
+    "verdict": "OVERFIT",
+    "bars": 8734,
+    "is_roi": 4.55,
+    "is_win": 52.0,
+    "is_trades": 25,
+    "oos_roi": -10.49,
+    "oos_win": 32.4,
+    "oos_trades": 34,
+    "config": {
+      "rsi": "25/75",
+      "tp": 1.5,
+      "flat": 3.0,
+      "conf": 0.6
+    }
+  },
+  "BNB": {
+    "ticker": "BNB",
+    "verdict": "OVERFIT",
+    "bars": 8734,
+    "is_roi": 6.3,
+    "is_win": 62.0,
+    "is_trades": 50,
+    "oos_roi": -12.27,
+    "oos_win": 32.4,
+    "oos_trades": 37,
+    "config": {
+      "rsi": "30/80",
+      "tp": 1.5,
+      "flat": 3.0,
+      "conf": 0.6
+    }
+  },
+  "ARB": {
+    "ticker": "ARB",
+    "verdict": "OVERFIT",
+    "bars": 8734,
+    "is_roi": -0.46,
+    "is_win": 47.1,
+    "is_trades": 17,
+    "oos_roi": -5.73,
+    "oos_win": 12.5,
+    "oos_trades": 8,
+    "config": {
+      "rsi": "20/80",
+      "tp": 1.5,
+      "flat": 3.0,
+      "conf": 0.6
+    }
+  },
+  "AVAX": {
+    "ticker": "AVAX",
+    "verdict": "OVERFIT",
+    "bars": 8734,
+    "is_roi": 11.77,
+    "is_win": 67.9,
+    "is_trades": 28,
+    "oos_roi": -7.02,
+    "oos_win": 27.3,
+    "oos_trades": 22,
+    "config": {
+      "rsi": "20/75",
+      "tp": 1.5,
+      "flat": 3.0,
+      "conf": 0.65
+    }
+  },
+  "LINK": {
+    "ticker": "LINK",
+    "verdict": "OVERFIT",
+    "bars": 8734,
+    "is_roi": 1.16,
+    "is_win": 54.5,
+    "is_trades": 11,
+    "oos_roi": -6.14,
+    "oos_win": 27.3,
+    "oos_trades": 11,
+    "config": {
+      "rsi": "20/80",
+      "tp": 1.5,
+      "flat": 2.0,
+      "conf": 0.6
+    }
+  },
+  "DOGE": {
+    "ticker": "DOGE",
+    "verdict": "OVERFIT",
+    "bars": 8734,
+    "is_roi": -1.63,
+    "is_win": 43.3,
+    "is_trades": 30,
+    "oos_roi": -3.63,
+    "oos_win": 40.0,
+    "oos_trades": 20,
+    "config": {
+      "rsi": "20/75",
+      "tp": 1.5,
+      "flat": 3.0,
+      "conf": 0.6
+    }
+  },
+  "ADA": {
+    "ticker": "ADA",
+    "verdict": "OVERFIT",
+    "bars": 8734,
+    "is_roi": 3.11,
+    "is_win": 50.0,
+    "is_trades": 38,
+    "oos_roi": -8.16,
+    "oos_win": 40.0,
+    "oos_trades": 45,
+    "config": {
+      "rsi": "30/80",
+      "tp": 1.5,
+      "flat": 3.0,
+      "conf": 0.6
+    }
+  },
+  "XRP": {
+    "ticker": "XRP",
+    "verdict": "OVERFIT",
+    "bars": 8734,
+    "is_roi": 3.1,
+    "is_win": 53.7,
+    "is_trades": 67,
+    "oos_roi": -26.2,
+    "oos_win": 28.0,
+    "oos_trades": 82,
+    "config": {
+      "rsi": "30/75",
+      "tp": 1.5,
+      "flat": 3.0,
+      "conf": 0.6
+    }
+  }
+}

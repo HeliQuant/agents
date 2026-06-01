@@ -1,0 +1,41 @@
+{
+  "asset": "MNT",
+  "provider": {
+    "provider": "groq",
+    "base": "https://api.groq.com/openai/v1",
+    "style": "openai",
+    "has_key": true,
+    "num_keys": 2,
+    "models": [
+      "llama-3.3-70b-versatile",
+      "openai/gpt-oss-120b",
+      "qwen/qwen3-32b"
+    ]
+  },
+  "analysts": {
+    "Regime/Technical": {
+      "stance": "neutral",
+      "confidence": "medium",
+      "key_point": "The current regime is Ranging with an ADX of 23.8, below the trending threshold of 39.6, and the OOS track record shows a +5.58% fixed and +7.51% dynamic-R:R return."
+    },
+    "Macro (BTC/Allora)": {
+      "stance": "neutral",
+      "confidence": "medium",
+      "key_point": "BTC is in a ranging regime with a modest 0.42% 24\u2011bar return and a moderate 0.64 8\u2011hour correlation to MNT, suggesting limited directional bias."
+    },
+    "On-chain/Risk": {
+      "stance": "neutral",
+      "confidence": "high",
+      "key_point": "Rugpull safety confirmed as 'SAFE' with tight 0.88% max drawdown, but whale PnLs show mixed results (-$1024 loss for top whale vs. $155 gain for third)."
+    }
+  },
+  "decision": {
+    "decision": "ABSTAIN",
+    "direction": "NONE",
+    "strategy": "none",
+    "dynamic_rr": null,
+    "confidence": "high",
+    "reasoning": "The validated engine reports a ranging regime and trend_following_applicable_now is false, so trend-following cannot be used. All analysts are neutral, providing no contrary signal to override the regime check. Hence we abstain per policy.",
+    "self_management": []
+  }
+}

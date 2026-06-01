@@ -181,9 +181,20 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     for n in (1, 3, 5, 10):
         out[f"return_{n}"] = out["close"].pct_change(n)
 
-    out["volume_change"] = out["volume"].pct_change()
+    # Volume features. Some sources (e.g. Pyth oracle OHLC) carry no volume, so
+    # volume==0 for every bar → pct_change() is all-NaN and a later dropna() wipes
+    # the ENTIRE frame (→ XGBoost trains on 0 rows → crash). Treat missing/zero
+    # volume as a neutral 0 signal (XGBoost ignores the resulting constant column)
+    # instead of letting it nuke every row.
+    out["volume_change"] = (
+        out["volume"].pct_change().replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    )
     out["volume_ma20"] = out["volume"].rolling(20).mean()
-    out["volume_ratio"] = out["volume"] / (out["volume_ma20"] + 1e-12)
+    out["volume_ratio"] = (
+        (out["volume"] / (out["volume_ma20"] + 1e-12))
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0.0)
+    )
 
     out["ema_cross"] = (out["ema20"] > out["ema50"]).astype(int)
     out["price_above_ema20"] = (out["close"] > out["ema20"]).astype(int)

@@ -1,0 +1,311 @@
+{
+  "MNT": {
+    "ticker": "MNT",
+    "train_bars": 4320,
+    "test_bars": 1440,
+    "folds": 14,
+    "traded_folds": 9,
+    "pos_folds": 4,
+    "total_oos_roi_compounded": 1.01,
+    "total_oos_trades": 33,
+    "fold_detail": [
+      {
+        "fold": 1,
+        "cfg": "adx30/bw20/tp2.5",
+        "oos_roi": 0.0,
+        "trades": 0,
+        "win": 0.0
+      },
+      {
+        "fold": 2,
+        "cfg": "adx30/bw10/tp2.5",
+        "oos_roi": 0.0,
+        "trades": 0,
+        "win": 0.0
+      },
+      {
+        "fold": 3,
+        "cfg": "adx30/bw10/tp2.5",
+        "oos_roi": 0.66,
+        "trades": 3,
+        "win": 33.3
+      },
+      {
+        "fold": 4,
+        "cfg": "adx40/bw20/tp2.5",
+        "oos_roi": 0.22,
+        "trades": 2,
+        "win": 50.0
+      },
+      {
+        "fold": 5,
+        "cfg": "adx30/bw20/tp2.0",
+        "oos_roi": 0.0,
+        "trades": 0,
+        "win": 0.0
+      },
+      {
+        "fold": 6,
+        "cfg": "adx30/bw20/tp2.5",
+        "oos_roi": 0.0,
+        "trades": 0,
+        "win": 0.0
+      },
+      {
+        "fold": 7,
+        "cfg": "adx30/bw20/tp2.5",
+        "oos_roi": -0.36,
+        "trades": 1,
+        "win": 0.0
+      },
+      {
+        "fold": 8,
+        "cfg": "adx30/bw10/tp2.5",
+        "oos_roi": -3.58,
+        "trades": 6,
+        "win": 16.7
+      },
+      {
+        "fold": 9,
+        "cfg": "adx40/bw20/tp2.0",
+        "oos_roi": -0.07,
+        "trades": 4,
+        "win": 25.0
+      },
+      {
+        "fold": 10,
+        "cfg": "adx30/bw20/tp2.0",
+        "oos_roi": -1.6,
+        "trades": 4,
+        "win": 25.0
+      },
+      {
+        "fold": 11,
+        "cfg": "adx30/bw10/tp2.5",
+        "oos_roi": 0.0,
+        "trades": 0,
+        "win": 0.0
+      },
+      {
+        "fold": 12,
+        "cfg": "adx30/bw10/tp2.5",
+        "oos_roi": 2.15,
+        "trades": 3,
+        "win": 66.7
+      },
+      {
+        "fold": 13,
+        "cfg": "adx40/bw10/tp2.5",
+        "oos_roi": 4.89,
+        "trades": 7,
+        "win": 71.4
+      },
+      {
+        "fold": 14,
+        "cfg": "adx40/bw10/tp2.0",
+        "oos_roi": -1.08,
+        "trades": 3,
+        "win": 33.3
+      }
+    ]
+  },
+  "METH": {
+    "ticker": "METH",
+    "train_bars": 4320,
+    "test_bars": 1440,
+    "folds": 10,
+    "traded_folds": 9,
+    "pos_folds": 2,
+    "total_oos_roi_compounded": -3.35,
+    "total_oos_trades": 13,
+    "fold_detail": [
+      {
+        "fold": 1,
+        "cfg": "adx40/bw20/tp2.0",
+        "oos_roi": -1.13,
+        "trades": 1,
+        "win": 0.0
+      },
+      {
+        "fold": 2,
+        "cfg": "adx30/bw10/tp2.0",
+        "oos_roi": -1.16,
+        "trades": 1,
+        "win": 0.0
+      },
+      {
+        "fold": 3,
+        "cfg": "adx40/bw10/tp2.5",
+        "oos_roi": -2.07,
+        "trades": 2,
+        "win": 0.0
+      },
+      {
+        "fold": 4,
+        "cfg": "adx30/bw20/tp2.0",
+        "oos_roi": -0.66,
+        "trades": 1,
+        "win": 0.0
+      },
+      {
+        "fold": 5,
+        "cfg": "adx30/bw20/tp2.0",
+        "oos_roi": -1.91,
+        "trades": 3,
+        "win": 33.3
+      },
+      {
+        "fold": 6,
+        "cfg": "adx30/bw20/tp2.0",
+        "oos_roi": -1.14,
+        "trades": 1,
+        "win": 0.0
+      },
+      {
+        "fold": 7,
+        "cfg": "adx30/bw10/tp2.5",
+        "oos_roi": -0.19,
+        "trades": 1,
+        "win": 0.0
+      },
+      {
+        "fold": 8,
+        "cfg": "adx40/bw20/tp2.0",
+        "oos_roi": 0.0,
+        "trades": 0,
+        "win": 0.0
+      },
+      {
+        "fold": 9,
+        "cfg": "adx30/bw20/tp2.0",
+        "oos_roi": 1.9,
+        "trades": 1,
+        "win": 100.0
+      },
+      {
+        "fold": 10,
+        "cfg": "adx30/bw20/tp2.0",
+        "oos_roi": 3.08,
+        "trades": 2,
+        "win": 100.0
+      }
+    ]
+  },
+  "ETH": {
+    "ticker": "ETH",
+    "train_bars": 4320,
+    "test_bars": 1440,
+    "folds": 15,
+    "traded_folds": 10,
+    "pos_folds": 3,
+    "total_oos_roi_compounded": -6.64,
+    "total_oos_trades": 19,
+    "fold_detail": [
+      {
+        "fold": 1,
+        "cfg": "adx40/bw10/tp2.5",
+        "oos_roi": 0.0,
+        "trades": 0,
+        "win": 0.0
+      },
+      {
+        "fold": 2,
+        "cfg": "adx40/bw10/tp2.5",
+        "oos_roi": 0.0,
+        "trades": 0,
+        "win": 0.0
+      },
+      {
+        "fold": 3,
+        "cfg": "adx40/bw20/tp2.5",
+        "oos_roi": 0.0,
+        "trades": 0,
+        "win": 0.0
+      },
+      {
+        "fold": 4,
+        "cfg": "adx40/bw20/tp2.5",
+        "oos_roi": 0.48,
+        "trades": 1,
+        "win": 100.0
+      },
+      {
+        "fold": 5,
+        "cfg": "adx30/bw20/tp2.5",
+        "oos_roi": -0.7,
+        "trades": 1,
+        "win": 0.0
+      },
+      {
+        "fold": 6,
+        "cfg": "adx40/bw10/tp2.0",
+        "oos_roi": -0.94,
+        "trades": 1,
+        "win": 0.0
+      },
+      {
+        "fold": 7,
+        "cfg": "adx30/bw10/tp2.5",
+        "oos_roi": -1.19,
+        "trades": 1,
+        "win": 0.0
+      },
+      {
+        "fold": 8,
+        "cfg": "adx40/bw10/tp2.5",
+        "oos_roi": -2.03,
+        "trades": 2,
+        "win": 0.0
+      },
+      {
+        "fold": 9,
+        "cfg": "adx40/bw20/tp2.0",
+        "oos_roi": 0.0,
+        "trades": 0,
+        "win": 0.0
+      },
+      {
+        "fold": 10,
+        "cfg": "adx30/bw20/tp2.0",
+        "oos_roi": -1.05,
+        "trades": 2,
+        "win": 0.0
+      },
+      {
+        "fold": 11,
+        "cfg": "adx30/bw20/tp2.0",
+        "oos_roi": 0.56,
+        "trades": 4,
+        "win": 50.0
+      },
+      {
+        "fold": 12,
+        "cfg": "adx40/bw20/tp2.0",
+        "oos_roi": 0.37,
+        "trades": 2,
+        "win": 50.0
+      },
+      {
+        "fold": 13,
+        "cfg": "adx30/bw10/tp2.0",
+        "oos_roi": 0.0,
+        "trades": 0,
+        "win": 0.0
+      },
+      {
+        "fold": 14,
+        "cfg": "adx30/bw10/tp2.0",
+        "oos_roi": -2.15,
+        "trades": 2,
+        "win": 0.0
+      },
+      {
+        "fold": 15,
+        "cfg": "adx40/bw10/tp2.0",
+        "oos_roi": -0.15,
+        "trades": 3,
+        "win": 33.3
+      }
+    ]
+  }
+}

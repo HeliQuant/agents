@@ -23,6 +23,11 @@ data/live_ticks.jsonl
 data/live_trades.jsonl
 data/live_summary.json
 
+# Agent memory (runtime, regenerable) + replay/test artifacts
+*.db
+data/replay_*
+data/_memtest*
+
 # IDE
 .vscode/
 .idea/

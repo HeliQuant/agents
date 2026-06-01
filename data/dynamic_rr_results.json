@@ -1,0 +1,54 @@
+{
+  "MNT": {
+    "ticker": "MNT",
+    "adx_scale": [
+      40.4,
+      61.5
+    ],
+    "fixed": {
+      "tp": 2.5,
+      "oos": {
+        "roi": 5.58,
+        "win": 58.8,
+        "trades": 17,
+        "avg_rr": 2.5
+      }
+    },
+    "dynamic": {
+      "tp_lo": 2.0,
+      "tp_hi": 3.0,
+      "oos": {
+        "roi": 7.51,
+        "win": 58.8,
+        "trades": 17,
+        "avg_rr": 2.58
+      }
+    }
+  },
+  "METH": {
+    "ticker": "METH",
+    "adx_scale": [
+      38.8,
+      60.8
+    ],
+    "fixed": {
+      "tp": 2.0,
+      "oos": {
+        "roi": 1.7,
+        "win": 50.0,
+        "trades": 4,
+        "avg_rr": 2.0
+      }
+    },
+    "dynamic": {
+      "tp_lo": 1.5,
+      "tp_hi": 3.0,
+      "oos": {
+        "roi": 2.41,
+        "win": 50.0,
+        "trades": 4,
+        "avg_rr": 2.61
+      }
+    }
+  }
+}

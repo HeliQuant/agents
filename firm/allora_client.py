@@ -56,12 +56,15 @@ def _spot_price(coin_id: str) -> float:
     return float(resp.json()[coin_id]["usd"])
 
 
-async def fetch_btc_macro_signal(
+async def fetch_macro_signal(
+    topic_id: int,
+    coin_id: str,
+    asset: str,
     *,
     bull_threshold: float = 0.005,
     bear_threshold: float = -0.005,
 ) -> MacroSignal:
-    """Return the latest BTC macro signal: predicted 8h price vs current spot."""
+    """Return the latest Allora macro signal for a topic: predicted 8h price vs current spot."""
     if not settings_allora_key():
         raise RuntimeError("ALLORA_API_KEY not configured")
 
@@ -69,17 +72,17 @@ async def fetch_btc_macro_signal(
         chain_id=ChainID.MAINNET,
         api_key=settings_allora_key(),
     )
-    inference = await client.get_inference_by_topic_id(BTC_PRICE_PREDICTION_8H_TOPIC)
+    inference = await client.get_inference_by_topic_id(topic_id)
     data: dict[str, Any] = inference.inference_data.model_dump()
     predicted = float(data["network_inference_normalized"])
     timestamp = int(data["timestamp"])
     signature_hex = str(inference.signature)
 
-    spot = _spot_price("bitcoin")
+    spot = _spot_price(coin_id)
     predicted_return = (predicted - spot) / spot if spot > 0 else 0.0
 
     return MacroSignal(
-        asset="BTC",
+        asset=asset,
         spot_usd=spot,
         predicted_usd=predicted,
         predicted_return=predicted_return,
@@ -89,6 +92,16 @@ async def fetch_btc_macro_signal(
         signature_hex=signature_hex,
         timestamp=timestamp,
     )
+
+
+async def fetch_btc_macro_signal(**kw) -> MacroSignal:
+    """BTC/USD 8h prediction (topic 14)."""
+    return await fetch_macro_signal(BTC_PRICE_PREDICTION_8H_TOPIC, "bitcoin", "BTC", **kw)
+
+
+async def fetch_eth_macro_signal(**kw) -> MacroSignal:
+    """ETH/USD 8h prediction (topic 9)."""
+    return await fetch_macro_signal(ETH_PRICE_PREDICTION_8H_TOPIC, "ethereum", "ETH", **kw)
 
 
 def settings_allora_key() -> str | None:
