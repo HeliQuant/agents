@@ -32,7 +32,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-
 import pandas as pd  # noqa: E402
 
 from firm import trade_ticket as tt  # noqa: E402
-from firm.memory_store import MemoryStore  # noqa: E402
+from firm.memory_store import MemoryStore, get_memory_store  # noqa: E402
 from firm.onchain_recorder import anchor  # noqa: E402
 
 # multi_asset lives in scripts/ (not a package) — load it directly
@@ -143,7 +143,7 @@ def once(ticker: str, mem: MemoryStore | None = None) -> dict:
     from firm import organization as org
 
     own = mem is None
-    mem = mem or MemoryStore()
+    mem = mem or get_memory_store()  # Supabase if creds set, else SQLite
     try:
         df, last, regime, *_ = org._state(ticker)
     except Exception:
@@ -165,7 +165,7 @@ def once(ticker: str, mem: MemoryStore | None = None) -> dict:
 
 def loop(ticker: str, interval: int) -> None:
     print(f"=== AUTONOMOUS LOOP · LIVE every {interval}s on {ticker.upper()} (Ctrl-C to stop) ===")
-    mem = MemoryStore()
+    mem = get_memory_store()
     try:
         while True:
             once(ticker, mem=mem)

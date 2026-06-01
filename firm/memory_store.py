@@ -275,6 +275,20 @@ class SupabaseMemoryStore:
         pass
 
 
+def get_memory_store(prefer_supabase: bool = True):
+    """Backend selector: SupabaseMemoryStore when SUPABASE_URL+SUPABASE_KEY are set (prod, networked
+    — the frontend can read it), else MemoryStore (SQLite, local). The autonomous loop calls this so
+    it auto-upgrades to Supabase the moment creds land in env/.env — zero code change."""
+    if prefer_supabase and _env("SUPABASE_URL") and _env("SUPABASE_KEY"):
+        try:
+            store = SupabaseMemoryStore()
+            print("[memory] backend: Supabase (decisions_hq)")
+            return store
+        except Exception as e:  # noqa: BLE001
+            print(f"[memory] Supabase unavailable ({str(e)[:60]}) -> SQLite fallback")
+    return MemoryStore()
+
+
 if __name__ == "__main__":
     import sys
 
