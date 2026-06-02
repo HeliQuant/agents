@@ -290,6 +290,35 @@ def tool_smartsocial(ticker: str) -> dict:
     }
 
 
+def tool_oi_contrarian(ticker: str) -> dict:
+    """OI-Contrarian desk — HeliQuant's ONE OOS-validated trading edge. Combines the validated-edge
+    registry (data/validated_edges.json, from scripts/39's cost-aware OOS backtest) with the LIVE
+    OI-contrarian signal (perp OI 24h-change quintiles). When the asset HAS a validated edge AND the
+    signal fires, this is a genuine, backtested reason to ENTER — the disciplined exception to abstain."""
+    sym = {"WMNT": "MNT"}.get(ticker.strip().upper(), ticker.strip().upper())
+    try:
+        edges = json.loads((ROOT / "data" / "validated_edges.json").read_text())
+    except (FileNotFoundError, ValueError):
+        edges = {}
+    e = edges.get(sym)
+    sig = _oi_contrarian_signal(sym)
+    if not e:
+        return {"asset": sym, "edge_validated": False, "actionable": False, "live_signal": sig,
+                "read": f"NO OOS-validated edge for {sym}; live OI signal={sig or 'none'} = context only, NOT tradeable.",
+                "methodology": "Fade perp OI 24h-change extremes; only tradeable where it survives cost-aware OOS."}
+    actionable = sig is not None
+    return {
+        "asset": sym, "edge_validated": True, "actionable": actionable, "live_signal": sig,
+        "edge_stats": {"p_win": e["p_win"], "payoff_b": e["payoff_b"], "sample_n": e["sample_n"],
+                       "oos_roi_pct": e["oos_roi_pct"]},
+        "read": (f"VALIDATED OI-contrarian edge (p_win {e['p_win']}, payoff {e['payoff_b']}, n {e['sample_n']}, "
+                 f"OOS {e['oos_roi_pct']}%). " + (f"ACTIONABLE: live fade-the-crowd {sig} setup firing now."
+                 if actionable else "No OI extreme right now -> wait/abstain until the signal fires.")),
+        "caveat": "Hedge-like, bear-amplified, small-sample (n=34), inconsistent fold-to-fold — fractional-Kelly sized, NOT a guarantee.",
+        "methodology": "Fade perp OI 24h-change extremes (top quintile->SHORT, bottom->LONG); the one edge surviving cost-aware OOS.",
+    }
+
+
 def parse_json(txt: str) -> dict:
     if not isinstance(txt, str) or not txt.strip():
         return {"raw": ""}
@@ -325,12 +354,13 @@ ANALYST_SYS = (
 )
 
 PM_SYS = (
-    "You are the Portfolio Manager (head) of HeliQuant. Six specialist desks each gave a domain view "
-    "(Regime/Technical, Macro/Allora, On-chain/Risk, Research, Smart-Money Flow, Smart-Social) plus the validated engine's "
-    "status, plus a BULL-vs-BEAR researcher debate. Synthesize EVERYTHING and DECIDE the most rational action. Rules you must obey:\n"
-    "- There is currently NO OOS-validated trend-following TRADING edge (full-history + rolling WF both "
-    "failed). So unless oos_validated_trading_edge is true, you must ABSTAIN from directional trades — "
-    "a correct, disciplined outcome, not a failure. The regime read can still be accurate.\n"
+    "You are the Portfolio Manager (head) of HeliQuant. Seven specialist desks each gave a domain view "
+    "(Regime/Technical, Macro/Allora, On-chain/Risk, Research, Smart-Money Flow, Smart-Social, OI-Contrarian) plus the validated "
+    "engine's status, plus a BULL-vs-BEAR researcher debate. Synthesize EVERYTHING and DECIDE the most rational action. Rules:\n"
+    "- Trend-following has NO OOS-validated edge (full-history + rolling WF failed); a pure trend thesis -> ABSTAIN. "
+    "The regime read can still be accurate.\n"
+    "- THE ONE EXCEPTION (validated edge): if the OI-Contrarian desk has edge_validated=true AND actionable=true, an ENTER in "
+    "its live_signal direction IS justified — our backtested edge is firing. Size/levels/risk are computed downstream.\n"
     "- Weigh dissent across desks; a hard rugpull veto (trade_safe=false) forces ABSTAIN.\n"
     "- NEVER invent numbers; reference the desks.\n"
     "Output ONLY one JSON object and NOTHING else — begin with { end with }.\n"
@@ -405,7 +435,7 @@ def run_operations(verbose: bool = True) -> dict:
 
 
 def build_desks(ticker: str) -> list[tuple[str, dict, str]]:
-    """The 6 specialist desks, each with a REAL tool output. (Sentiment desk dropped 2026-06-01:
+    """The 7 specialist desks, each with a REAL tool output. (Sentiment desk dropped 2026-06-01:
     its price-momentum proxy was redundant with the regime engine's momentum features + the whale
     mood signal, and validated as near-noise — IC ~0.04 MNT, ~0 BTC/ETH. News/social belongs to
     the Research desk, not a separate sentiment desk.)"""
@@ -416,6 +446,7 @@ def build_desks(ticker: str) -> list[tuple[str, dict, str]]:
         ("Research", tool_research(), "external macro research: Fear&Greed index + global market via public APIs"),
         ("Smart-Money Flow", tool_smartmoney(ticker), "dynamic whale/contract flow — Mantle on-chain DEX flow + mETH staking (CONTRACT mode) or majors perp positioning (POSITIONING mode) + Nansen macro smart-money netflow"),
         ("Smart-Social", tool_smartsocial(ticker), "narrative/mindshare via Elfa (smart accounts, not retail) — where crypto attention is rotating"),
+        ("OI-Contrarian", tool_oi_contrarian(ticker), "the ONE OOS-validated edge — fade perp OI extremes; validated-edge registry + live signal = the disciplined exception to abstain"),
     ]
 
 
@@ -499,7 +530,7 @@ def run_pm(ticker: str, reg: dict, analysts: dict, debate: dict, verbose: bool =
             "regime_classifier_oos_accuracy": reg.get("regime_classifier_oos_accuracy"),
             "status": reg.get("status"),
         }, indent=2)
-        + "\n\nDesk views (all 5):\n" + json.dumps(analysts, indent=2)
+        + "\n\nDesk views (all 7):\n" + json.dumps(analysts, indent=2)
         + "\n\nBull-vs-Bear debate:\n" + json.dumps(debate, indent=2)
         + (("\n\n" + extra) if extra else "")
         + "\n\nMake the final, most rational decision."
@@ -674,7 +705,7 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
     if verbose:
         print("=" * 74)
         print(f"  HeliQuant — Autonomous Intelligence Organization   |   asset: {ticker}")
-        print(f"  provider: {info['provider']} ({info['style']}) | keys: {info.get('num_keys', 0)} | desks: 6")
+        print(f"  provider: {info['provider']} ({info['style']}) | keys: {info.get('num_keys', 0)} | desks: 7")
         print("=" * 74)
     ops = run_operations(verbose=verbose)
     desks = build_desks(ticker)
