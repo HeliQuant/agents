@@ -45,10 +45,60 @@
       "align_rate": 0.56
     }
   },
+  "by_asset": {
+    "MNT": {
+      "weights": {
+        "Regime/Technical": 1.0,
+        "Macro (Allora)": 1.0,
+        "On-chain/Risk": 1.0,
+        "Research": 1.0,
+        "Smart-Money Flow": 1.0,
+        "Smart-Social": 1.0,
+        "OI-Contrarian": 1.12
+      },
+      "detail": {
+        "Regime/Technical": {
+          "weight": 1.0,
+          "samples": 0,
+          "align_rate": null
+        },
+        "Macro (Allora)": {
+          "weight": 1.0,
+          "samples": 0,
+          "align_rate": null
+        },
+        "On-chain/Risk": {
+          "weight": 1.0,
+          "samples": 0,
+          "align_rate": null
+        },
+        "Research": {
+          "weight": 1.0,
+          "samples": 0,
+          "align_rate": null
+        },
+        "Smart-Money Flow": {
+          "weight": 1.0,
+          "samples": 0,
+          "align_rate": null
+        },
+        "Smart-Social": {
+          "weight": 1.0,
+          "samples": 0,
+          "align_rate": null
+        },
+        "OI-Contrarian": {
+          "weight": 1.12,
+          "samples": 150,
+          "align_rate": 0.56
+        }
+      }
+    }
+  },
   "bounds": [
     0.6,
     1.4
   ],
   "min_samples": 15,
-  "backend": "sqlite"
+  "backend": "supabase"
 }

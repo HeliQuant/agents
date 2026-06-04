@@ -107,10 +107,10 @@ def _write(rows: list[dict]) -> str:
 def _read() -> list[dict]:
     sb = _supabase()
     if sb:
-        return sb.table(SB_TABLE).select("desk,stance,realized").execute().data or []
+        return sb.table(SB_TABLE).select("ticker,desk,stance,realized").execute().data or []
     c = _sqlite()
-    rows = [{"desk": d, "stance": s, "realized": r}
-            for d, s, r in c.execute("SELECT desk,stance,realized FROM desk_outcomes").fetchall()]
+    rows = [{"ticker": t, "desk": d, "stance": s, "realized": r}
+            for t, d, s, r in c.execute("SELECT ticker,desk,stance,realized FROM desk_outcomes").fetchall()]
     c.close()
     return rows
 
@@ -184,15 +184,15 @@ def seed_oi_from_replay(ticker: str = "MNT") -> int:
     return len(rows)
 
 
-def compute_weights() -> dict:
-    """Per-desk reliability from the outcome table -> bounded weight. >= MIN_SAMPLES to move off
-    neutral. weight = clamp(2 * align_rate, 0.6, 1.4). Writes desk_weights.json. Returns detail."""
+def _weights_from(rows: list[dict]) -> tuple[dict, dict]:
+    """Compute (weights, detail) for one subset of outcome rows. weight = clamp(2*align_rate) once
+    >= MIN_SAMPLES, else neutral. align derived as stance==realized."""
     tally: dict[str, list[int]] = {d: [0, 0] for d in DESKS}  # [aligned, total]
-    for r in _read():
+    for r in rows:
         d = r.get("desk")
         if d in tally:
             tally[d][1] += 1
-            tally[d][0] += int(r.get("stance") == r.get("realized"))  # aligned derived here
+            tally[d][0] += int(r.get("stance") == r.get("realized"))
     weights, detail = {}, {}
     for d in DESKS:
         aligned, total = tally[d]
@@ -203,10 +203,24 @@ def compute_weights() -> dict:
             rate, w = (aligned / total if total else None), NEUTRAL
         weights[d] = w
         detail[d] = {"weight": w, "samples": total, "align_rate": round(rate, 3) if rate is not None else None}
-    WEIGHTS.write_text(json.dumps({"weights": weights, "detail": detail,
+    return weights, detail
+
+
+def compute_weights() -> dict:
+    """PER-ASSET desk reliability (a desk can be great for MNT, useless for HYPE) + a global pool.
+    Writes desk_weights.json: top-level `weights`/`detail` = GLOBAL (back-compat) + `by_asset`.
+    Returns {by_asset, global}."""
+    rows = _read()
+    assets = sorted({r.get("ticker") for r in rows if r.get("ticker")})
+    by_asset = {}
+    for a in assets:
+        w, d = _weights_from([r for r in rows if r.get("ticker") == a])
+        by_asset[a] = {"weights": w, "detail": d}
+    gw, gd = _weights_from(rows)  # global pool (all assets)
+    WEIGHTS.write_text(json.dumps({"weights": gw, "detail": gd, "by_asset": by_asset,
                                    "bounds": [LO, HI], "min_samples": MIN_SAMPLES,
                                    "backend": "supabase" if _supabase() else "sqlite"}, indent=2))
-    return detail
+    return {"by_asset": by_asset, "global": gd}
 
 
 def stash_pending(ticker: str, entry: float, analysts: dict, made_epoch: float) -> int:
@@ -251,14 +265,19 @@ def resolve_matured(price_by_ticker: dict, now_epoch: float, hold_h: float = 24.
     return len(scored)
 
 
-def load_weights() -> dict:
-    """Current desk weights — ALL-NEUTRAL if none learned yet (org then behaves identically)."""
+def load_weights(asset: str | None = None) -> dict:
+    """Desk weights for an asset (its own learned weights if available, else the global pool, else
+    ALL-NEUTRAL). No data anywhere -> neutral -> the org behaves identically (backward-compatible)."""
+    neutral = {d: NEUTRAL for d in DESKS}
     if not WEIGHTS.exists():
-        return {d: NEUTRAL for d in DESKS}
+        return neutral
     try:
-        return json.loads(WEIGHTS.read_text()).get("weights", {d: NEUTRAL for d in DESKS})
+        data = json.loads(WEIGHTS.read_text())
     except (ValueError, OSError):
-        return {d: NEUTRAL for d in DESKS}
+        return neutral
+    if asset:  # per-asset: an asset's OWN learned weights, else NEUTRAL — never borrow another asset's
+        return data.get("by_asset", {}).get(asset.upper(), {}).get("weights", neutral)
+    return data.get("weights", neutral)  # no asset specified -> global pool (back-compat)
 
 
 def weights_brief(weights: dict) -> str:

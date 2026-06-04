@@ -722,7 +722,7 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
     # ADDITIVE self-learning: advisory desk-reliability prior (empty if none learned -> org unchanged).
     try:
         from firm import desk_performance as _dp
-        _dw_brief = _dp.weights_brief(_dp.load_weights())
+        _dw_brief = _dp.weights_brief(_dp.load_weights(ticker))  # PER-ASSET desk-reliability prior
     except Exception:  # noqa: BLE001 — desk-learning is optional; never let it break the org
         _dw_brief = ""
     decision = run_pm(ticker, desks[0][1], analysts, debate, verbose=verbose,
