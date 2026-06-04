@@ -70,21 +70,25 @@ def anchor(decision: dict, ticker: str, ts: str, *, send: bool = False) -> dict:
     if not send:
         out["note"] = "DRY — record + hash built; pass send=True (+ EXECUTOR_PRIVATE_KEY + gas) to broadcast"
         return out
+    out.update(_send_hash_tx(h))
+    return out
+
+
+def _send_hash_tx(h: str) -> dict:
+    """Broadcast a 0-value self-tx carrying hash `h` as calldata on Mantle Sepolia (the proven, safe
+    anchoring primitive). Returns {sent, tx_hash, from_address, explorer} or {error}. Testnet only."""
     try:
         from eth_account import Account
         from web3 import Web3
     except ImportError:
-        out["error"] = "pip install web3 eth-account to broadcast"
-        return out
+        return {"error": "pip install web3 eth-account to broadcast"}
     pk = _env("EXECUTOR_PRIVATE_KEY") or _env("DEPLOYER_PRIVATE_KEY")  # testnet: deployer doubles as executor
     if not pk:
-        out["error"] = "set EXECUTOR_PRIVATE_KEY (or DEPLOYER_PRIVATE_KEY) in env/.env to broadcast (testnet only)"
-        return out
+        return {"error": "set EXECUTOR_PRIVATE_KEY (or DEPLOYER_PRIVATE_KEY) in env/.env (testnet only)"}
     rpc = _env("MANTLE_SEPOLIA_RPC_URL") or MANTLE_SEPOLIA_RPC
     w3 = Web3(Web3.HTTPProvider(rpc))
     if not w3.is_connected():
-        out["error"] = f"cannot reach RPC {rpc}"
-        return out
+        return {"error": f"cannot reach RPC {rpc}"}
     acct = Account.from_key(pk)
     tx = {"chainId": CHAIN_ID, "from": acct.address, "to": acct.address, "value": 0,
           "nonce": w3.eth.get_transaction_count(acct.address),
@@ -92,8 +96,33 @@ def anchor(decision: dict, ticker: str, ts: str, *, send: bool = False) -> dict:
     signed = acct.sign_transaction(tx)
     raw = getattr(signed, "raw_transaction", None) or getattr(signed, "rawTransaction", None)
     txh = w3.eth.send_raw_transaction(raw)
-    out.update(sent=True, tx_hash=txh.hex(), from_address=acct.address,
-               explorer=f"https://sepolia.mantlescan.xyz/tx/{txh.hex()}")
+    return {"sent": True, "tx_hash": txh.hex(), "from_address": acct.address,
+            "explorer": f"https://sepolia.mantlescan.xyz/tx/{txh.hex()}"}
+
+
+def canonical_validation_record(edge: dict, ts: str) -> dict:
+    """Deterministic snapshot of a VALIDATED/GRADUATED edge — auditable proof it cleared HeliQuant's
+    cost-aware OOS gate on real data at this time. References the firm's ERC-8004 identity (tokenId)."""
+    return {
+        "type": "edge_validation", "ts": ts, "asset": str(edge.get("asset", "")).upper(),
+        "edge": edge.get("edge"), "validated": bool(edge.get("validated")),
+        "p_win": edge.get("p_win"), "payoff_b": edge.get("payoff_b"),
+        "sample_n": edge.get("sample_n"), "oos_roi_pct": edge.get("oos_roi_pct"),
+        "firm_token_id": _env("FIRM_TOKEN_ID"),
+    }
+
+
+def anchor_validation(edge: dict, ts: str, *, send: bool = False) -> dict:
+    """Build (and optionally broadcast) an on-chain anchor of an edge-validation event. DRY-safe.
+    The hash is anchored in a Mantle Sepolia tx's calldata — auditable on Mantlescan; not a claim."""
+    rec = canonical_validation_record(edge, ts)
+    h = record_hash(rec)
+    out = {"chain": "mantle-sepolia", "chain_id": CHAIN_ID, "kind": "edge_validation",
+           "record": rec, "record_hash": h, "sent": False}
+    if not send:
+        out["note"] = "DRY — validation record + hash built; pass send=True (+ key + gas) to broadcast"
+        return out
+    out.update(_send_hash_tx(h))
     return out
 
 
