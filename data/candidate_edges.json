@@ -1,0 +1,13 @@
+{
+  "HYPE": {
+    "edge": "flow_contrarian",
+    "asset": "HYPE",
+    "validated": false,
+    "p_win": 0.4685,
+    "payoff_b": 1.682,
+    "sample_n": 111,
+    "oos_roi_pct": 92.49,
+    "note": "flow_contrarian via edge_lab onboarding (non-overlap 24h, cost-aware OOS, 3/5 walk-forward folds +ve). avg 72.0bps > 11.0bps fee; sample 111. CANDIDATE \u2014 passed 1-split but NOT walk-forward-robust; paper-trade only until graduated by self-learning (scripts/60).",
+    "tier": "candidate"
+  }
+}

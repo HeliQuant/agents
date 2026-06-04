@@ -34,3 +34,4 @@ data/_memtest*
 *.swp
 .DS_Store
 Thumbs.db
+data/paper_ledger.jsonl

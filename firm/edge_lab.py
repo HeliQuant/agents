@@ -152,6 +152,39 @@ def _usable(df: pd.DataFrame, src: str) -> bool:
     return col in df.columns and df[col].notna().sum() > 60 and df[col].nunique() > 5
 
 
+# edge_type -> (signal source, is-contrarian) — inverse of edge_name; lets the org/loop act on ANY edge.
+_EDGE_SRC = {
+    "oi_contrarian": ("oi_chg24", True), "oi_momentum": ("oi_chg24", False),
+    "price_meanrev": ("price_mom24", True), "price_momentum": ("price_mom24", False),
+    "funding_fade": ("funding", True), "funding_follow": ("funding", False),
+    "flow_contrarian": ("flow_imbalance", True), "flow_momentum": ("flow_imbalance", False),
+}
+
+
+def live_signal(asset: str, edge_type: str, data_dir) -> dict:
+    """Current actionable signal for a given edge TYPE — generalised beyond OI so the org/loop can act
+    on ANY earned-or-candidate edge. Direction is encoded in edge_type; thresholds are the asset's own
+    historical quintiles (same construction as organization._oi_contrarian_signal). signal in {LONG,SHORT,None}."""
+    if edge_type not in _EDGE_SRC:
+        return {"signal": None, "note": f"unknown edge_type {edge_type}"}
+    src, contrarian = _EDGE_SRC[edge_type]
+    fp = Path(data_dir) / f"{asset.lower()}_positioning.csv"
+    if not fp.exists():
+        return {"signal": None, "note": "no positioning data"}
+    df = pd.read_csv(fp).sort_values("timestamp").reset_index(drop=True)
+    if not _usable(df, src):
+        return {"signal": None, "note": f"source {src} not usable"}
+    sig = SIGNAL_SOURCES[src](df).dropna()
+    if sig.empty:
+        return {"signal": None, "note": "no signal values"}
+    latest, p20, p80 = float(sig.iloc[-1]), float(sig.quantile(0.20)), float(sig.quantile(0.80))
+    s = ("SHORT" if contrarian else "LONG") if latest >= p80 else \
+        ("LONG" if contrarian else "SHORT") if latest <= p20 else None
+    return {"signal": s, "edge_type": edge_type, "source": src, "contrarian": contrarian,
+            "latest": round(latest, 6), "p20": round(p20, 6), "p80": round(p80, 6),
+            "actionable": s is not None}
+
+
 def onboard(asset: str, data_dir) -> dict:
     """Test ALL signal sources against an asset's real perp data. Returns the full report
     (every hypothesis, pass or fail) + the best passing edge (if any)."""

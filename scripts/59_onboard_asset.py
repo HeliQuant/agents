@@ -86,15 +86,27 @@ def main():
           f"of which ROBUST (walk-forward): {', '.join(a for a in earned if robust.get(a)) or 'none'}")
     if held:
         print(f"⚠️  HELD as candidates (great single-split, FAILED walk-forward → NOT registered): {', '.join(held)}")
+    # CANDIDATE tier: passed the 1-split bar but NOT robust -> paper-trade only (never live-AGGRESSIVE)
+    # until self-learning graduates them. Kept SEPARATE from validated_edges.json so the org can't
+    # size up on an unproven edge.
+    cand_path = DATA / "candidate_edges.json"
+    candidates = {
+        a: {**earned[a], "validated": False, "tier": "candidate",
+            "note": earned[a]["note"] + " CANDIDATE — passed 1-split but NOT walk-forward-robust; "
+                    "paper-trade only until graduated by self-learning (scripts/60)."}
+        for a in earned if not robust.get(a)
+    }
     if do_write:
         for a in add_robust:
             reg[a] = earned[a]
         reg_path.write_text(json.dumps(reg, indent=2))
-        print(f"registry NOW holds: {', '.join(reg.keys())}"
-              + (f"   (NEW robust: {', '.join(add_robust)})" if add_robust else "   (no new robust edges — registry unchanged)"))
+        cand_path.write_text(json.dumps(candidates, indent=2))
+        print(f"VALIDATED (live-eligible): {', '.join(reg.keys())}"
+              + (f"  (NEW robust: {', '.join(add_robust)})" if add_robust else "  (unchanged)"))
+        print(f"CANDIDATE (paper-only, learning): {', '.join(candidates.keys()) or 'none'}  -> data/candidate_edges.json")
     else:
-        print(f"[dry] would ADD (robust only): {', '.join(add_robust) or 'nothing new'}   "
-              f"(registry currently: {', '.join(reg.keys())}).  Pass --write to commit.")
+        print(f"[dry] would ADD validated: {', '.join(add_robust) or 'none'};  "
+              f"candidates (paper): {', '.join(candidates.keys()) or 'none'}.  Pass --write to commit.")
     print("full report (incl. failures + walk-forward) -> data/onboarding_report.json")
 
 
