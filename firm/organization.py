@@ -603,7 +603,12 @@ def _edge_profile(ticker: str, regime: str, direction: str) -> dict:
     e = edges.get(ticker.upper())
     if not e:
         return {"validated": False, "note": f"no OOS-validated edge for {ticker.upper()} -> SAFE"}
-    sig = _oi_contrarian_signal(ticker)
+    # Generalised: read the live signal for THIS asset's ACTUAL edge type (oi/flow/funding/price), so a
+    # GRADUATED non-OI edge can size live too. For oi_contrarian this reproduces _oi_contrarian_signal
+    # exactly (verified); an unknown/unsupported edge type -> None -> SAFE (conservative). Reads only
+    # validated_edges.json, so paper-only CANDIDATE edges can never unlock AGGRESSIVE.
+    from firm.edge_lab import live_signal as _live_signal
+    sig = _live_signal(ticker, e.get("edge", ""), ROOT / "data").get("signal")
     if sig and sig == direction.upper():
         return {"validated": True, "p_win": e["p_win"], "payoff_b": e["payoff_b"],
                 "sample_n": e["sample_n"], "edge": e["edge"],
