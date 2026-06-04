@@ -514,14 +514,17 @@ def run_debate(desks: list, analysts: dict, verbose: bool = True) -> dict:
 
 
 def run_pm(ticker: str, reg: dict, analysts: dict, debate: dict, verbose: bool = True,
-           extra: str = "", memory_brief: str = "") -> dict:
+           extra: str = "", memory_brief: str = "", desk_weights_brief: str = "") -> dict:
     """PHASE 2 — portfolio manager synthesizes all desks into a final decision.
     `extra` carries a risk-gate repair note; `memory_brief` carries recall of past resolved trades
-    (the learning-loop) so the PM gets 'smarter with use'."""
+    (the learning-loop); `desk_weights_brief` is an ADVISORY desk-reliability prior (additive — empty
+    string means no change, gates are never altered) so the PM gets 'smarter with use'."""
     head_user = (
         f"Asset: {ticker}\n\n"
         + (("AGENT MEMORY (recall of past resolved trades — weigh this history):\n" + memory_brief + "\n\n")
            if memory_brief else "")
+        + (("DESK RELIABILITY PRIORS (learned from track record — ADVISORY only, gates unchanged):\n"
+            + desk_weights_brief + "\n\n") if desk_weights_brief else "")
         + "Validated engine status:\n"
         + json.dumps({
             "current_regime": reg.get("current_regime"),
@@ -711,7 +714,14 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
     desks = build_desks(ticker)
     analysts = run_analysts(desks, verbose=verbose)
     debate = run_debate(desks, analysts, verbose=verbose)
-    decision = run_pm(ticker, desks[0][1], analysts, debate, verbose=verbose, memory_brief=memory_brief)
+    # ADDITIVE self-learning: advisory desk-reliability prior (empty if none learned -> org unchanged).
+    try:
+        from firm import desk_performance as _dp
+        _dw_brief = _dp.weights_brief(_dp.load_weights())
+    except Exception:  # noqa: BLE001 — desk-learning is optional; never let it break the org
+        _dw_brief = ""
+    decision = run_pm(ticker, desks[0][1], analysts, debate, verbose=verbose,
+                      memory_brief=memory_brief, desk_weights_brief=_dw_brief)
     decision = finalize_decision(ticker, decision, desks, desks[0][1], analysts, debate, verbose=verbose)
     if verbose:
         print("\n" + "=" * 74)

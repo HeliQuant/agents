@@ -35,3 +35,4 @@ data/_memtest*
 .DS_Store
 Thumbs.db
 data/paper_ledger.jsonl
+data/desk_outcomes.jsonl
