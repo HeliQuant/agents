@@ -41,6 +41,20 @@ memory   7 desks  bull/bear   verdict      R:R≥2   record    loop
 
 > Sessions frequently fire **0 trades** (sideways MNT / no validated edge) — a correct, disciplined **ABSTAIN**, not a bug. *We publish what doesn't work, too.*
 
+## Self-learning — assets EARN their edge (Layers 1–5)
+
+HeliQuant doesn't "trade everything." A new asset must **earn** its edge, and the firm sharpens as it runs — **by evidence, never by tweaking the gate.**
+
+| Layer | What | Entry |
+|---|---|---|
+| 1 · Onboard | test 4 hypotheses (OI · price-mom · funding · order-flow) × asset under one gate: cost-aware OOS **+ walk-forward + drop-the-best-fold robustness** | `firm/edge_lab.py`, `scripts/59` |
+| 2 · Self-learn | re-validate each cycle → **graduate** candidates that earn robustness, **demote** decayed edges; candidates paper-trade meanwhile | `scripts/60` |
+| 3 · Desk self-mod | learn which of the 7 desks to trust — **bounded [0.6,1.4] advisory** weights (never mutes a desk; gates untouched; absent ⇒ org identical) | `firm/desk_performance.py`, `scripts/62` |
+| 4 · On-chain validation | anchor each validated edge's record-hash on Mantle — auditable proof, not a claim | `scripts/61` |
+| 5 · ML-as-hypothesis | ML (RF/XGB) judged by the **same** gate — earns or abstains (MNT: ~51% acc, negative OOS → **abstain**) | `scripts/64` |
+
+Two tiers — **`validated_edges.json`** (robust, live-eligible, AGGRESSIVE-capable) vs **`candidate_edges.json`** (passed 1-split only → paper until graduated) — so an unproven edge can never size live. Today: **MNT oi_contrarian** is the lone validated edge (anchored on Mantle: tx `0x5ae63fd1…`, block 39,509,049); **HYPE flow_contrarian** is a *held* candidate (+92% 1-split but one-fold-dependent). One-screen view: `python scripts/63_status.py`.
+
 ## Quickstart
 
 ```bash
@@ -62,6 +76,14 @@ python scripts/13_walkforward.py              # walk-forward OOS (rejects overfi
 python scripts/24_autonomous_org.py           # one pass: 7 desks → debate → PM → ticket → record
 python scripts/52_autonomous_loop.py --once   # the autonomous loop (PLAN→EXEC→LEARN); --replay for no-LLM backtest
 python scripts/26_paper_trade.py              # live forward paper-trade
+
+# ── self-learning: onboard assets · graduate edges · anchor on-chain ──
+python scripts/59_onboard_asset.py all --write   # earn an edge or abstain (validated vs candidate tiers)
+python scripts/60_self_learn.py                  # graduate/demote on evidence (--apply to move tiers)
+python scripts/61_anchor_validation.py --broadcast  # anchor validated edges on Mantle (auditable)
+python scripts/62_desk_learning.py               # learn desk-reliability weights (advisory, bounded)
+python scripts/64_ml_hypothesis.py               # ML (RF/XGB) under the same gate — earns or abstains
+python scripts/63_status.py                      # one-screen system status (demo command center)
 ```
 
 ## Module layout
@@ -70,8 +92,10 @@ python scripts/26_paper_trade.py              # live forward paper-trade
 firm/
   organization.py        ← THE BRAIN: 7-desk org → debate → PM → finalize_decision
   trade_ticket.py        ← entry/stop/invalidation/TP-ladder + SAFE/AGGRESSIVE Kelly + R:R≥2 gate
+  edge_lab.py            ← asset-onboarding: hypothesis library + cost-aware OOS + walk-forward gate + live_signal
+  desk_performance.py    ← additive desk-reliability self-learning (bounded [0.6,1.4] advisory weights)
   memory_store.py        ← decisions_hq (Supabase + pgvector, SQLite fallback) + Obsidian vault mirror
-  onchain_recorder.py    ← anchor decision hash → Mantle Sepolia (broadcast-on-ENTER)
+  onchain_recorder.py    ← anchor decision/validation hash → Mantle Sepolia (broadcast-on-ENTER + anchor_validation)
   llm_client.py          ← BYO multi-provider / multi-key LLM abstraction
   allora_client.py · nansen_client.py · elfa_client.py · whale_manager.py   ← desk data sources
   ml.py · regime.py      ← XGBoost regime classifier (feature pipeline + serving)
