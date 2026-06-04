@@ -1,0 +1,425 @@
+{
+  "BTC": {
+    "asset": "BTC",
+    "results": [
+      {
+        "contrarian": true,
+        "train_ic": -0.107,
+        "oos_roi_pct": 4.59,
+        "trades": 77,
+        "win_pct": 44.2,
+        "p_win": 0.4416,
+        "payoff_b": 1.407,
+        "avg_bps": 8.3,
+        "buyhold_pct": -16.74,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "oi_chg24",
+        "edge": "oi_contrarian"
+      },
+      {
+        "contrarian": true,
+        "train_ic": -0.05,
+        "oos_roi_pct": -11.93,
+        "trades": 71,
+        "win_pct": 49.3,
+        "p_win": 0.493,
+        "payoff_b": 0.879,
+        "avg_bps": -14.5,
+        "buyhold_pct": -15.51,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "price_mom24",
+        "edge": "price_meanrev"
+      },
+      {
+        "contrarian": true,
+        "train_ic": -0.014,
+        "oos_roi_pct": 2.33,
+        "trades": 69,
+        "win_pct": 47.8,
+        "p_win": 0.4783,
+        "payoff_b": 1.172,
+        "avg_bps": 5.8,
+        "buyhold_pct": -15.51,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "funding",
+        "edge": "funding_fade"
+      },
+      {
+        "contrarian": false,
+        "train_ic": 0.035,
+        "oos_roi_pct": -17.89,
+        "trades": 78,
+        "win_pct": 48.7,
+        "p_win": 0.4872,
+        "payoff_b": 0.79,
+        "avg_bps": -22.6,
+        "buyhold_pct": -15.51,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "flow_imbalance",
+        "edge": "flow_momentum"
+      }
+    ],
+    "earned": null
+  },
+  "ETH": {
+    "asset": "ETH",
+    "results": [
+      {
+        "contrarian": false,
+        "train_ic": 0.019,
+        "oos_roi_pct": -29.12,
+        "trades": 67,
+        "win_pct": 43.3,
+        "p_win": 0.4328,
+        "payoff_b": 0.958,
+        "avg_bps": -43.9,
+        "buyhold_pct": -32.95,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "oi_chg24",
+        "edge": "oi_momentum"
+      },
+      {
+        "contrarian": false,
+        "train_ic": 0.003,
+        "oos_roi_pct": -21.8,
+        "trades": 56,
+        "win_pct": 35.7,
+        "p_win": 0.3571,
+        "payoff_b": 1.332,
+        "avg_bps": -38.3,
+        "buyhold_pct": -31.82,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "price_mom24",
+        "edge": "price_momentum"
+      },
+      {
+        "contrarian": false,
+        "train_ic": 0.029,
+        "oos_roi_pct": -33.03,
+        "trades": 38,
+        "win_pct": 42.1,
+        "p_win": 0.4211,
+        "payoff_b": 0.79,
+        "avg_bps": -95.6,
+        "buyhold_pct": -31.82,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "funding",
+        "edge": "funding_follow"
+      },
+      {
+        "contrarian": false,
+        "train_ic": 0.017,
+        "oos_roi_pct": -3.09,
+        "trades": 84,
+        "win_pct": 48.8,
+        "p_win": 0.4881,
+        "payoff_b": 1.051,
+        "avg_bps": 0.2,
+        "buyhold_pct": -31.82,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "flow_imbalance",
+        "edge": "flow_momentum"
+      }
+    ],
+    "earned": null
+  },
+  "HYPE": {
+    "asset": "HYPE",
+    "results": [
+      {
+        "contrarian": false,
+        "train_ic": 0.016,
+        "oos_roi_pct": -52.22,
+        "trades": 56,
+        "win_pct": 48.2,
+        "p_win": 0.4821,
+        "payoff_b": 0.61,
+        "avg_bps": -117.0,
+        "buyhold_pct": 50.9,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "oi_chg24",
+        "edge": "oi_momentum"
+      },
+      {
+        "contrarian": true,
+        "train_ic": -0.021,
+        "oos_roi_pct": 19.04,
+        "trades": 59,
+        "win_pct": 57.6,
+        "p_win": 0.5763,
+        "payoff_b": 0.926,
+        "avg_bps": 45.7,
+        "buyhold_pct": 50.9,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "price_mom24",
+        "edge": "price_meanrev"
+      },
+      {
+        "contrarian": true,
+        "train_ic": -0.152,
+        "oos_roi_pct": 18.99,
+        "trades": 216,
+        "win_pct": 45.8,
+        "p_win": 0.4583,
+        "payoff_b": 1.322,
+        "avg_bps": 21.2,
+        "buyhold_pct": 50.9,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "funding",
+        "edge": "funding_fade"
+      },
+      {
+        "contrarian": true,
+        "train_ic": -0.076,
+        "oos_roi_pct": 92.49,
+        "trades": 111,
+        "win_pct": 46.8,
+        "p_win": 0.4685,
+        "payoff_b": 1.682,
+        "avg_bps": 72.0,
+        "buyhold_pct": 50.9,
+        "rt_fee_bps": 11.0,
+        "passed": true,
+        "source": "flow_imbalance",
+        "edge": "flow_contrarian",
+        "wf": {
+          "folds": 5,
+          "positive": 3,
+          "mean_fold_roi": 13.5,
+          "ex_best_mean": 1.94,
+          "fold_rois": [
+            -9.66,
+            9.38,
+            -3.69,
+            11.74,
+            59.74
+          ],
+          "consistent": false
+        },
+        "robust": false
+      }
+    ],
+    "earned": {
+      "contrarian": true,
+      "train_ic": -0.076,
+      "oos_roi_pct": 92.49,
+      "trades": 111,
+      "win_pct": 46.8,
+      "p_win": 0.4685,
+      "payoff_b": 1.682,
+      "avg_bps": 72.0,
+      "buyhold_pct": 50.9,
+      "rt_fee_bps": 11.0,
+      "passed": true,
+      "source": "flow_imbalance",
+      "edge": "flow_contrarian",
+      "wf": {
+        "folds": 5,
+        "positive": 3,
+        "mean_fold_roi": 13.5,
+        "ex_best_mean": 1.94,
+        "fold_rois": [
+          -9.66,
+          9.38,
+          -3.69,
+          11.74,
+          59.74
+        ],
+        "consistent": false
+      },
+      "robust": false
+    }
+  },
+  "HYPE_HL": {
+    "asset": "HYPE_HL",
+    "results": [],
+    "earned": null
+  },
+  "MNT": {
+    "asset": "MNT",
+    "results": [
+      {
+        "contrarian": true,
+        "train_ic": -0.155,
+        "oos_roi_pct": 28.91,
+        "trades": 34,
+        "win_pct": 58.8,
+        "p_win": 0.5882,
+        "payoff_b": 1.304,
+        "avg_bps": 79.4,
+        "buyhold_pct": -30.84,
+        "rt_fee_bps": 11.0,
+        "passed": true,
+        "source": "oi_chg24",
+        "edge": "oi_contrarian",
+        "wf": {
+          "folds": 5,
+          "positive": 4,
+          "mean_fold_roi": 7.62,
+          "ex_best_mean": 4.7,
+          "fold_rois": [
+            11.57,
+            7.61,
+            19.34,
+            5.64,
+            -6.04
+          ],
+          "consistent": true
+        },
+        "robust": true
+      },
+      {
+        "contrarian": true,
+        "train_ic": -0.013,
+        "oos_roi_pct": -3.71,
+        "trades": 28,
+        "win_pct": 46.4,
+        "p_win": 0.4643,
+        "payoff_b": 1.105,
+        "avg_bps": -6.1,
+        "buyhold_pct": -29.65,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "price_mom24",
+        "edge": "price_meanrev"
+      },
+      {
+        "contrarian": false,
+        "train_ic": 0.05,
+        "oos_roi_pct": -47.06,
+        "trades": 106,
+        "win_pct": 39.6,
+        "p_win": 0.3962,
+        "payoff_b": 1.01,
+        "avg_bps": -53.7,
+        "buyhold_pct": -29.65,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "funding",
+        "edge": "funding_follow"
+      },
+      {
+        "contrarian": true,
+        "train_ic": -0.076,
+        "oos_roi_pct": -4.64,
+        "trades": 77,
+        "win_pct": 42.9,
+        "p_win": 0.4286,
+        "payoff_b": 1.342,
+        "avg_bps": 0.8,
+        "buyhold_pct": -29.65,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "flow_imbalance",
+        "edge": "flow_contrarian"
+      }
+    ],
+    "earned": {
+      "contrarian": true,
+      "train_ic": -0.155,
+      "oos_roi_pct": 28.91,
+      "trades": 34,
+      "win_pct": 58.8,
+      "p_win": 0.5882,
+      "payoff_b": 1.304,
+      "avg_bps": 79.4,
+      "buyhold_pct": -30.84,
+      "rt_fee_bps": 11.0,
+      "passed": true,
+      "source": "oi_chg24",
+      "edge": "oi_contrarian",
+      "wf": {
+        "folds": 5,
+        "positive": 4,
+        "mean_fold_roi": 7.62,
+        "ex_best_mean": 4.7,
+        "fold_rois": [
+          11.57,
+          7.61,
+          19.34,
+          5.64,
+          -6.04
+        ],
+        "consistent": true
+      },
+      "robust": true
+    }
+  },
+  "SOL": {
+    "asset": "SOL",
+    "results": [
+      {
+        "contrarian": false,
+        "train_ic": 0.113,
+        "oos_roi_pct": -5.46,
+        "trades": 65,
+        "win_pct": 53.8,
+        "p_win": 0.5385,
+        "payoff_b": 0.839,
+        "avg_bps": -2.7,
+        "buyhold_pct": -34.85,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "oi_chg24",
+        "edge": "oi_momentum"
+      },
+      {
+        "contrarian": false,
+        "train_ic": 0.021,
+        "oos_roi_pct": -22.18,
+        "trades": 49,
+        "win_pct": 46.9,
+        "p_win": 0.4694,
+        "payoff_b": 0.856,
+        "avg_bps": -41.9,
+        "buyhold_pct": -33.58,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "price_mom24",
+        "edge": "price_momentum"
+      },
+      {
+        "contrarian": true,
+        "train_ic": -0.076,
+        "oos_roi_pct": -40.14,
+        "trades": 79,
+        "win_pct": 41.8,
+        "p_win": 0.4177,
+        "payoff_b": 0.872,
+        "avg_bps": -59.2,
+        "buyhold_pct": -33.58,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "funding",
+        "edge": "funding_fade"
+      },
+      {
+        "contrarian": false,
+        "train_ic": 0.038,
+        "oos_roi_pct": -19.7,
+        "trades": 85,
+        "win_pct": 51.8,
+        "p_win": 0.5176,
+        "payoff_b": 0.807,
+        "avg_bps": -19.3,
+        "buyhold_pct": -33.58,
+        "rt_fee_bps": 11.0,
+        "passed": false,
+        "source": "flow_imbalance",
+        "edge": "flow_momentum"
+      }
+    ],
+    "earned": null
+  }
+}
