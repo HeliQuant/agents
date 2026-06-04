@@ -154,6 +154,19 @@ def once(ticker: str, mem: MemoryStore | None = None, broadcast: bool = False) -
     dec = res.get("decision", {})
     ts = _now()
     rid = mem.record_decision(ts, ticker, regime, dec)
+    # ADDITIVE forward desk-learning: score any matured (24h) stances vs realized price, then stash
+    # THIS run's desk stances to be scored later. Guarded — desk-learning never breaks the loop.
+    try:
+        import time as _t
+        from firm import desk_performance as _dp
+        _price = {ticker.upper(): float(last["close"])}
+        _scored = _dp.resolve_matured(_price, _t.time())
+        _dp.stash_pending(ticker, float(last["close"]), res.get("analysts", {}), _t.time())
+        if _scored:
+            _dp.compute_weights()  # refresh advisory weights only when new outcomes actually resolved
+            print(f"[LEARN] {_scored} matured desk-stance(s) scored -> desk weights refreshed")
+    except Exception:  # noqa: BLE001
+        pass
     # broadcast-on-ENTER: a real trade goes on-chain (live Mantle tx); ABSTAIN stays DRY (gas-frugal)
     is_enter = dec.get("decision") == "ENTER"
     rec = anchor(dec, ticker, ts, send=broadcast and is_enter)

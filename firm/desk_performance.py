@@ -46,6 +46,12 @@ CREATE TABLE IF NOT EXISTS desk_outcomes (
     created_at TEXT DEFAULT (datetime('now'))
 );"""
 
+# Transient working state: desk stances awaiting their 24h outcome (local only — scored -> desk_outcomes).
+_PENDING_SCHEMA = """
+CREATE TABLE IF NOT EXISTS desk_pending (
+    ticker TEXT, made_epoch REAL, entry REAL, desk TEXT, stance TEXT
+);"""
+
 
 def _env(key: str) -> str | None:
     v = os.environ.get(key)
@@ -201,6 +207,48 @@ def compute_weights() -> dict:
                                    "bounds": [LO, HI], "min_samples": MIN_SAMPLES,
                                    "backend": "supabase" if _supabase() else "sqlite"}, indent=2))
     return detail
+
+
+def stash_pending(ticker: str, entry: float, analysts: dict, made_epoch: float) -> int:
+    """At decision time, stash each desk's directional stance so it can be SCORED when the 24h
+    window matures. Local SQLite (transient working state). Returns #desks stashed."""
+    rows = [(ticker.upper(), float(made_epoch), float(entry), d,
+             _stance_dir((analysts.get(d) or {}).get("stance", ""))) for d in DESKS]
+    rows = [r for r in rows if r[4]]  # only desks that took a directional view
+    if not rows:
+        return 0
+    c = _sqlite()
+    c.execute(_PENDING_SCHEMA)
+    c.executemany("INSERT INTO desk_pending (ticker,made_epoch,entry,desk,stance) VALUES (?,?,?,?,?)", rows)
+    c.commit()
+    c.close()
+    return len(rows)
+
+
+def resolve_matured(price_by_ticker: dict, now_epoch: float, hold_h: float = 24.0) -> int:
+    """Score every pending stance whose 24h window has elapsed: realized = current price vs entry,
+    aligned = stance==realized. Writes results to desk_outcomes (Supabase/SQLite), clears pending.
+    This is how the 6 LLM/API desks earn real weights FORWARD as live decisions mature. Returns #scored."""
+    c = _sqlite()
+    c.execute(_PENDING_SCHEMA)
+    pend = c.execute("SELECT rowid,ticker,made_epoch,entry,desk,stance FROM desk_pending").fetchall()
+    c.close()
+    scored, done = [], []
+    for rowid, tk, made, entry, desk, stance in pend:
+        cur = price_by_ticker.get(tk)
+        if cur is None or (now_epoch - made) < hold_h * 3600:
+            continue
+        scored.append({"ticker": tk, "desk": desk, "stance": stance,
+                       "realized": "L" if float(cur) >= entry else "S", "source": "live"})
+        done.append(rowid)
+    if scored:
+        _write(scored)
+    if done:
+        c = _sqlite()
+        c.executemany("DELETE FROM desk_pending WHERE rowid=?", [(r,) for r in done])
+        c.commit()
+        c.close()
+    return len(scored)
 
 
 def load_weights() -> dict:
