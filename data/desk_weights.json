@@ -49,5 +49,6 @@
     0.6,
     1.4
   ],
-  "min_samples": 15
+  "min_samples": 15,
+  "backend": "sqlite"
 }
