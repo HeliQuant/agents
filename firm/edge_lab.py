@@ -211,6 +211,29 @@ def onboard(asset: str, data_dir) -> dict:
     return {"asset": asset.upper(), "results": results, "earned": best}
 
 
+def sync_edges_hq() -> int:
+    """Mirror the local EDGE registry (validated_edges.json + candidate_edges.json) to Supabase
+    `edges_hq` (upsert by asset) so the firm's edge state — incl. CANDIDATE/probation edges like HYPE
+    — is FE-readable. Local JSON stays source of truth. Returns #rows synced (0 if no Supabase creds)."""
+    import json as _json
+    from firm.desk_performance import _supabase
+
+    def _rows(p: Path, tier: str) -> list[dict]:
+        d = _json.loads(p.read_text()) if p.exists() else {}
+        return [{"asset": a, "edge": e.get("edge"), "tier": tier, "validated": bool(e.get("validated")),
+                 "p_win": e.get("p_win"), "payoff_b": e.get("payoff_b"), "sample_n": e.get("sample_n"),
+                 "oos_roi_pct": e.get("oos_roi_pct"), "confirmations": int(e.get("confirmations", 0) or 0),
+                 "last_confirm_bar": e.get("last_confirm_bar"), "note": e.get("note")} for a, e in d.items()]
+
+    rows = _rows(ROOT / "data" / "validated_edges.json", "validated") + \
+        _rows(ROOT / "data" / "candidate_edges.json", "candidate")
+    sb = _supabase()
+    if not sb or not rows:
+        return 0
+    sb.table("edges_hq").upsert(rows, on_conflict="asset").execute()
+    return len(rows)
+
+
 def is_stable_robust(asset: str, edge: str, data_dir, cutoffs=(0.85, 0.92, 1.0)) -> dict:
     """STABILITY gate for graduation: an edge graduates to live ONLY if it's robust CONSISTENTLY
     across recent data cutoffs — not on a single lucky snapshot. An edge whose robustness FLIPS on a

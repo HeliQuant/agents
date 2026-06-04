@@ -18,7 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from firm.edge_lab import FEE, MIN_TRADES, onboard  # noqa: E402
+from firm.edge_lab import FEE, MIN_TRADES, onboard, sync_edges_hq  # noqa: E402
 
 DATA = ROOT / "data"
 
@@ -96,11 +96,24 @@ def main():
                     "paper-trade only until graduated by self-learning (scripts/60)."}
         for a in earned if not robust.get(a)
     }
+    # preserve probation progress (confirmations/last_confirm_bar) that scripts/60 maintains —
+    # re-onboarding must NOT wipe an edge's hard-won confirmation count.
+    _prev = json.loads(cand_path.read_text()) if cand_path.exists() else {}
+    for a in candidates:
+        for k in ("confirmations", "last_confirm_bar"):
+            if a in _prev and k in _prev[a]:
+                candidates[a][k] = _prev[a][k]
     if do_write:
         for a in add_robust:
             reg[a] = earned[a]
         reg_path.write_text(json.dumps(reg, indent=2))
         cand_path.write_text(json.dumps(candidates, indent=2))
+        try:  # mirror edge registry -> Supabase edges_hq (guarded; no-op without creds)
+            _n = sync_edges_hq()
+            if _n:
+                print(f"[sync] {_n} edge(s) → Supabase edges_hq (FE-readable)")
+        except Exception:  # noqa: BLE001
+            pass
         print(f"VALIDATED (live-eligible): {', '.join(reg.keys())}"
               + (f"  (NEW robust: {', '.join(add_robust)})" if add_robust else "  (unchanged)"))
         print(f"CANDIDATE (paper-only, learning): {', '.join(candidates.keys()) or 'none'}  -> data/candidate_edges.json")

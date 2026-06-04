@@ -27,7 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from firm.edge_lab import is_stable_robust, live_signal, onboard  # noqa: E402
+from firm.edge_lab import is_stable_robust, live_signal, onboard, sync_edges_hq  # noqa: E402
 
 DATA = ROOT / "data"
 VAL = DATA / "validated_edges.json"
@@ -132,6 +132,12 @@ def main():
             cand[a] = {**val.pop(a), "validated": False, "tier": "candidate"}
         VAL.write_text(json.dumps(val, indent=2))
         CAND.write_text(json.dumps(cand, indent=2))
+        try:  # mirror edge registry -> Supabase edges_hq (guarded; no-op without creds)
+            _n = sync_edges_hq()
+            if _n:
+                print(f"[sync] {_n} edge(s) → Supabase edges_hq (FE-readable)")
+        except Exception:  # noqa: BLE001
+            pass
         print(f"APPLIED. validated now: {', '.join(val) or 'none'}  |  candidates: {', '.join(cand) or 'none'}")
     else:
         print("[dry] no files changed. Pass --apply to graduate/demote. (Paper observations are logged either way.)")
