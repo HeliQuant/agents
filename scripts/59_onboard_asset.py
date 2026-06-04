@@ -76,37 +76,35 @@ def main():
     (DATA / "onboarding_report.json").write_text(json.dumps(report, indent=2))
     reg_path = DATA / "validated_edges.json"
     reg = json.loads(reg_path.read_text()) if reg_path.exists() else {}
-    # ADD only NEW assets that are ROBUST (passed 1-split AND walk-forward); preserve canonical existing.
-    add_robust = [a for a in earned if a not in reg and robust.get(a)]
-    held = [a for a in earned if a not in reg and not robust.get(a)]
+    # Onboarding DISCOVERS edges -> ALL new ones enter the CANDIDATE tier. Promotion to VALIDATED is
+    # scripts/60's job ONLY (gated by stability + NEW-DATA confirmation) so onboarding can NEVER bypass
+    # probation. validated_edges.json is left untouched here (canonical preserved).
+    new_edges = [a for a in earned if a not in reg]
+    robust_new = [a for a in new_edges if robust.get(a)]
+    fragile_new = [a for a in new_edges if not robust.get(a)]
 
     print("=" * len(hdr))
     print(f"ASSETS scanned: {sum(1 for a in report if not report[a].get('error'))}   "
           f"passed 1-split bar: {len(earned)} ({', '.join(earned) or 'none'})   "
           f"of which ROBUST (walk-forward): {', '.join(a for a in earned if robust.get(a)) or 'none'}")
-    if held:
-        print(f"⚠️  HELD as candidates (great single-split, FAILED walk-forward → NOT registered): {', '.join(held)}")
-    # CANDIDATE tier: passed the 1-split bar but NOT robust -> paper-trade only (never live-AGGRESSIVE)
-    # until self-learning graduates them. Kept SEPARATE from validated_edges.json so the org can't
-    # size up on an unproven edge.
+    if fragile_new:
+        print(f"⚠️  FRAGILE (1-split only, walk-forward artifact) → candidate/paper, won't graduate until robust: {', '.join(fragile_new)}")
+
     cand_path = DATA / "candidate_edges.json"
     candidates = {
         a: {**earned[a], "validated": False, "tier": "candidate",
-            "note": earned[a]["note"] + " CANDIDATE — passed 1-split but NOT walk-forward-robust; "
-                    "paper-trade only until graduated by self-learning (scripts/60)."}
-        for a in earned if not robust.get(a)
+            "note": earned[a]["note"] + (" CANDIDATE (ROBUST) — awaiting scripts/60 NEW-DATA confirmation before live."
+                    if robust.get(a) else " CANDIDATE — passed 1-split, not walk-forward-robust; paper-only.")}
+        for a in new_edges
     }
-    # preserve probation progress (confirmations/last_confirm_bar) that scripts/60 maintains —
-    # re-onboarding must NOT wipe an edge's hard-won confirmation count.
+    # preserve probation progress (confirmations/last_confirm_bar) that scripts/60 maintains.
     _prev = json.loads(cand_path.read_text()) if cand_path.exists() else {}
     for a in candidates:
         for k in ("confirmations", "last_confirm_bar"):
             if a in _prev and k in _prev[a]:
                 candidates[a][k] = _prev[a][k]
     if do_write:
-        for a in add_robust:
-            reg[a] = earned[a]
-        reg_path.write_text(json.dumps(reg, indent=2))
+        reg_path.write_text(json.dumps(reg, indent=2))   # validated UNCHANGED — only scripts/60 promotes
         cand_path.write_text(json.dumps(candidates, indent=2))
         try:  # mirror edge registry -> Supabase edges_hq (guarded; no-op without creds)
             _n = sync_edges_hq()
@@ -114,12 +112,13 @@ def main():
                 print(f"[sync] {_n} edge(s) → Supabase edges_hq (FE-readable)")
         except Exception:  # noqa: BLE001
             pass
-        print(f"VALIDATED (live-eligible): {', '.join(reg.keys())}"
-              + (f"  (NEW robust: {', '.join(add_robust)})" if add_robust else "  (unchanged)"))
-        print(f"CANDIDATE (paper-only, learning): {', '.join(candidates.keys()) or 'none'}  -> data/candidate_edges.json")
+        print(f"VALIDATED (unchanged — promotion is scripts/60's job, confirmation-gated): {', '.join(reg.keys())}")
+        print(f"CANDIDATE (paper): {', '.join(candidates.keys()) or 'none'}"
+              + (f"  · robust → pending scripts/60 confirmation: {', '.join(robust_new)}" if robust_new else ""))
     else:
-        print(f"[dry] would ADD validated: {', '.join(add_robust) or 'none'};  "
-              f"candidates (paper): {', '.join(candidates.keys()) or 'none'}.  Pass --write to commit.")
+        print(f"[dry] new candidates: {', '.join(new_edges) or 'none'}"
+              + (f"  (robust, will graduate via scripts/60 confirmation: {', '.join(robust_new)})" if robust_new else "")
+              + ".  Pass --write to commit.")
     print("full report (incl. failures + walk-forward) -> data/onboarding_report.json")
 
 
