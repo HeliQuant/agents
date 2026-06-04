@@ -16,19 +16,19 @@
   },
   "operations": {
     "before_health": {
-      "total": 14,
-      "keep": 14,
+      "total": 15,
+      "keep": 15,
       "drop": 0,
       "keep_fraction": 1.0,
       "losers": 0,
-      "data_age_hours": 29.1,
+      "data_age_hours": 7.3,
       "stale": false,
       "needs_migration": false
     },
     "decision": {
       "action": "keep",
       "confidence": "high",
-      "reason": "The watchlist has a keep fraction of 1.0 with 0 losers, and the data is not stale, having been updated within the last 29.1 hours."
+      "reason": "The watchlist has a keep fraction of 1.0 with 0 losers, and the data is not stale, indicating the current list is performing well."
     },
     "steward_model": "groq:llama-3.3-70b-versatile",
     "migrated": null,
@@ -50,9 +50,9 @@
     "Macro (Allora)": {
       "source": "Allora decentralised-AI 8h price prediction (BTC topic 14, ETH topic 9)",
       "btc": {
-        "spot_usd": 71473.0,
-        "predicted_8h_usd": 71462.0,
-        "predicted_return_pct": -0.016,
+        "spot_usd": 63225.0,
+        "predicted_8h_usd": 63360.0,
+        "predicted_return_pct": 0.213,
         "direction": "neutral"
       },
       "eth": null,
@@ -73,21 +73,21 @@
       "whale_health": {
         "qualify_pct": 100,
         "losers": 0,
-        "data_age_hours": 29.1,
+        "data_age_hours": 7.3,
         "stale": false
       },
       "whale_flow": {
         "net_bias": "neutral",
-        "net_flow_usd": 70969.0,
-        "net_score": 0.102,
-        "total_buy_usd": 381795.0,
-        "total_sell_usd": 310826.0,
-        "n_whales": 14,
-        "n_accumulating": 9,
-        "n_distributing": 2,
-        "pct_accumulating": 64,
+        "net_flow_usd": 38680.0,
+        "net_score": 0.122,
+        "total_buy_usd": 178113.0,
+        "total_sell_usd": 139433.0,
+        "n_whales": 15,
+        "n_accumulating": 5,
+        "n_distributing": 8,
+        "pct_accumulating": 33,
         "conviction": "broad",
-        "top1_net_share_pct": 42
+        "top1_net_share_pct": 46
       },
       "price_recent_24bar_pct": 3.86,
       "whale_divergence_vs_price": "neutral (no clear smart-money lean)",
@@ -101,120 +101,211 @@
         "CoinGecko prices"
       ],
       "fear_greed_index": {
-        "value": 29,
-        "label": "Fear"
+        "value": 12,
+        "label": "Extreme Fear"
       },
       "global_market": {
-        "total_mcap_change_24h_pct": -2.1,
-        "btc_dominance_pct": 56.9,
-        "active_cryptos": 17398
+        "total_mcap_change_24h_pct": -4.07,
+        "btc_dominance_pct": 55.3,
+        "active_cryptos": 17390
       },
       "trending_coins": [
-        "LAB",
+        "BONK",
         "HYPE",
-        "H",
-        "SLX",
-        "BTC"
+        "BTC",
+        "PENGU",
+        "WLD"
       ],
       "majors_24h_change_pct": {
-        "bitcoin": -2.86,
-        "ethereum": -1.93,
-        "mantle": -5.67
+        "bitcoin": -5.16,
+        "ethereum": -4.64,
+        "mantle": -2.83
       },
       "note": "External macro research via free public APIs \u2014 extensible from the public-apis catalog."
     },
     "Smart-Money Flow": {
       "asset": "WMNT",
       "mode": "CONTRACT",
-      "flow_score_0_100": 36,
+      "flow_score_0_100": 28,
       "read": "sell-pressure",
-      "detail": "DEX flow_bias 0.360   liq $8,464,780   vol24h $732,485   buys/sells 634/1129",
-      "methodology": "CONTRACT mode = Mantle on-chain DEX flow_bias + liquidity + mETH staking conviction; POSITIONING mode = perp OI/funding/long-short (contrarian-to-crowding, OI-contrarian-aligned). Aggregate (manipulation-robust), FORWARD-LOGGED to validate -> CONTEXT, not a timing trigger."
+      "detail": "DEX flow_bias 0.277   liq $8,078,551   vol24h $1,093,027   buys/sells 1104/2883",
+      "macro_smart_money_nansen": {
+        "read": "smart money net-ACCUMULATING (risk-on)",
+        "net24h_total_usd": 37567,
+        "top_funds_flow": [
+          {
+            "sym": "AZTEC",
+            "net24h_usd": 9997,
+            "net7d_usd": 9997,
+            "traders": 1
+          },
+          {
+            "sym": "OPAL",
+            "net24h_usd": 8978,
+            "net7d_usd": 22659,
+            "traders": 2
+          },
+          {
+            "sym": "ASTEROID",
+            "net24h_usd": 7753,
+            "net7d_usd": -48807,
+            "traders": 49
+          },
+          {
+            "sym": "PRISM",
+            "net24h_usd": 4392,
+            "net7d_usd": 12683,
+            "traders": 10
+          }
+        ],
+        "credits_left": "750"
+      },
+      "methodology": "CONTRACT mode = Mantle on-chain DEX flow_bias + liquidity + mETH staking conviction; POSITIONING mode = perp OI/funding/long-short (contrarian-to-crowding). macro_smart_money = Nansen funds' real netflow on ETH (macro risk-on/off context). Aggregate (manipulation-robust), FORWARD-LOGGED -> CONTEXT, not a timing trigger."
+    },
+    "Smart-Social": {
+      "asset": "MNT",
+      "asset_in_top_trending": false,
+      "asset_mindshare": "not in top trending (low social mindshare \u2014 expected for a Mantle-eco asset)",
+      "top_narratives_24h": [
+        {
+          "token": "btc",
+          "mentions": 1490,
+          "change_pct": -22.31
+        },
+        {
+          "token": "hype",
+          "mentions": 865,
+          "change_pct": 15.33
+        },
+        {
+          "token": "eth",
+          "mentions": 598,
+          "change_pct": 34.38
+        },
+        {
+          "token": "sol",
+          "mentions": 393,
+          "change_pct": 67.95
+        },
+        {
+          "token": "mstr",
+          "mentions": 246,
+          "change_pct": -3.91
+        },
+        {
+          "token": "near",
+          "mentions": 244,
+          "change_pct": 49.69
+        }
+      ],
+      "methodology": "Elfa smart-social mindshare (Twitter/X + Telegram, SMART accounts not retail noise). Detects where attention/narratives rotate (early-rotation signal). CONTEXT for the PM; Mantle-eco social mindshare is typically thin -> mainly a majors/narrative context."
+    },
+    "OI-Contrarian": {
+      "asset": "MNT",
+      "edge_validated": true,
+      "actionable": true,
+      "live_signal": "LONG",
+      "edge_stats": {
+        "p_win": 0.5882,
+        "payoff_b": 1.304,
+        "sample_n": 34,
+        "oos_roi_pct": 28.91
+      },
+      "read": "VALIDATED OI-contrarian edge (p_win 0.5882, payoff 1.304, n 34, OOS 28.91%). ACTIONABLE: live fade-the-crowd LONG setup firing now.",
+      "caveat": "Hedge-like, bear-amplified, small-sample (n=34), inconsistent fold-to-fold \u2014 fractional-Kelly sized, NOT a guarantee.",
+      "methodology": "Fade perp OI 24h-change extremes (top quintile->SHORT, bottom->LONG); the one edge surviving cost-aware OOS."
     }
   },
   "analysts": {
     "Regime/Technical": {
       "stance": "avoid",
       "confidence": "high",
-      "key_point": "The regime classifier has an OOS accuracy of 82.6%, but there is no validated trend-following edge, with both full-history walk-forward and rolling re-tune showing flat/negative OOS results."
+      "key_point": "The regime classifier has an OOS accuracy of 82.6%, but there is no validated trend-following edge, with both full-history walk-forward and rolling re-tune resulting in flat or negative OOS performance."
     },
     "Macro (Allora)": {
       "stance": "neutral",
       "confidence": "medium",
-      "key_point": "Allora AI predicts BTC at $71,462 in 8h vs spot $71,473, a -0.016% change, indicating a neutral outlook."
+      "key_point": "Allora AI predicts BTC at $63,360 in 8h versus the current $63,225, a modest 0.213% rise, and labels the direction as neutral (BTC-MNT correlation 0.64)."
     },
     "On-chain/Risk": {
       "stance": "neutral",
       "confidence": "medium",
-      "key_point": "WMNT shows low token risk (score 0.2) with trade_safe=True, but whale flow is neutral (net_score 0.102) despite 64% accumulation. Price rose 3.86% vs. neutral smart-money lean."
+      "key_point": "WMNT shows trade_safe with low risk (0.2) but remains a 'watch' due to mintability and top10=67% ownership; whale flow is neutral with $38.7k net accumulation (33% accumulating) amid 3.86% price rise, though divergence remains neutral."
     },
     "Research": {
       "stance": "bearish",
-      "confidence": "medium",
-      "key_point": "The Fear&Greed index is at 29, indicating Fear, and the global market cap has decreased by 2.1% in the last 24 hours, with major cryptocurrencies like Bitcoin, Ethereum, and Mantle experiencing declines of -2.86%, -1.93%, and -5.67% respectively."
+      "confidence": "high",
+      "key_point": "The Fear&Greed index is at 12, indicating Extreme Fear, and the global market shows a 4.07% decrease in total market capitalization over 24 hours, with major cryptocurrencies like Bitcoin and Ethereum experiencing significant declines of 5.16% and 4.64%, respectively."
     },
     "Smart-Money Flow": {
       "stance": "bearish",
       "confidence": "medium",
-      "key_point": "The Mantle on-chain DEX flow_bias of 0.360 indicates sell-pressure, and the liquidity of $8,464,780, along with a moderate volume of $732,485 in the last 24 hours, supports this bearish stance."
+      "key_point": "The flow score of 28 indicates moderate sell-pressure on WMNT, with a DEX flow bias of 0.277 and liquidity of $8,078,551. Smart money is net-ACCUMULATING, but top funds' flows are mixed, with AZTEC and OPAL showing strong accumulation, while ASTEROID is showing significant net outflow."
+    },
+    "Smart-Social": {
+      "stance": "neutral",
+      "confidence": "medium",
+      "key_point": "MNT is not in top trending with low social mindshare, while top narratives are rotating around majors like BTC, ETH, and SOL with significant changes in mentions, such as SOL's 67.95% increase and ETH's 34.38% increase."
+    },
+    "OI-Contrarian": {
+      "stance": "bullish",
+      "confidence": "medium",
+      "key_point": "Validated OI\u2011contrarian edge shows p_win\u202f0.5882, payoff\u202f1.304 over 34 trades with OOS ROI\u202f28.91%, triggering a LONG signal, though the small sample warrants caution."
     }
   },
   "debate": {
     "bull": {
-      "case": "no-trade",
+      "case": "long",
       "strongest_points": [
-        "Regime/Technical desk reports no validated trend-following edge despite an accurate regime classifier (82.6% OOS)",
-        "Macro (Allora) predicts a neutral outlook for BTC, which MNT empirically tracks (corr ~0.64)",
-        "On-chain/Risk indicates a neutral whale flow and low token risk, but lacks conviction for a strong trade",
-        "Research and Smart-Money Flow desks have bearish stances, but confidence is medium and not overwhelmingly strong"
+        "OI-Contrarian validated edge with p_win 0.5882, payoff 1.304, and OOS ROI 28.91%",
+        "Regime/Technical regime classifier 82.6% OOS accuracy, currently in Trending_Up regime"
       ],
       "honest_caveats": [
-        "Lack of validated trend-following edge from Regime/Technical desk",
-        "Neutral outlook from Macro (Allora) desk",
-        "Medium confidence in bearish stances from Research and Smart-Money Flow desks",
-        "No strong conviction from On-chain/Risk desk despite some accumulation"
+        "Small sample size for OI-Contrarian edge warrants caution",
+        "No validated trend-following edge from Regime/Technical, despite accurate regime classification",
+        "Mixed signals from other desks, including bearish Research and Smart-Money Flow stances, and neutral Macro and On-chain/Risk stances"
       ]
     },
     "bear": {
       "case": "abstain",
       "strongest_points": [
-        "No validated trend-following edge despite 82.6% OOS accuracy of the regime classifier (Regime/Technical)",
-        "Neutral outlook from Macro (Allora) with a predicted -0.016% change in BTC price",
-        "Neutral whale flow and smart-money lean (On-chain/Risk)",
-        "Bearish Research stance with Fear&Greed index at 29 and global market cap decrease of 2.1%"
+        "No validated trend-following edge (Regime/Technical)",
+        "Extreme Fear in the market (Fear&Greed index at 12, Research)",
+        "Global market decline (4.07% decrease in total market capitalization, Research)",
+        "Major cryptocurrencies experiencing significant declines (Bitcoin: -5.16%, Ethereum: -4.64%, Research)"
       ],
       "risks": [
-        "Lack of validated edge increases risk of losses",
-        "Neutral macro outlook may turn bearish",
-        "Whale flow and smart-money lean can quickly change",
-        "Bearish research stance may indicate broader market downturn"
+        "Lack of validated edge increases risk of losses (Regime/Technical)",
+        "Market sentiment is extremely bearish (Fear&Greed index, Research)",
+        "Whale flow is neutral but with a significant price rise (3.86%, On-chain/Risk)",
+        "Smart money flow indicates moderate sell-pressure (Smart-Money Flow)"
       ]
     },
     "bull_rebuttal": {
-      "rebuttal": "The BEAR's argument to abstain is valid given the lack of a validated trend-following edge and the neutral outlook from Macro (Allora), which suggests that the current market conditions do not strongly favor a bullish or bearish stance. However, the BULL's case for a no-trade approach also highlights the importance of considering the medium confidence in bearish stances from Research and Smart-Money Flow desks. The key point of contention lies in the interpretation of the neutral whale flow and smart-money lean, which could be seen as a sign of market indecision rather than a clear bearish signal. Ultimately, the decision to abstain or adopt a no-trade approach hinges on the investor's risk tolerance and market outlook. ",
+      "rebuttal": "...",
       "conceded": [
-        "No validated trend-following edge despite 82.6% OOS accuracy of the regime classifier",
-        "Neutral outlook from Macro (Allora) with a predicted -0.016% change in BTC price",
-        "Neutral whale flow and smart-money lean (On-chain/Risk)"
+        "...",
+        "..."
       ]
     },
     "bear_rebuttal": {
-      "rebuttal": "The BULL's argument for a no-trade stance is understandable, but it overlooks the importance of capital protection in the absence of a validated edge, as highlighted by the Regime/Technical desk's high confidence in avoiding trades due to the lack of a trend-following edge. The neutral outlook from Macro (Allora) and the neutral whale flow from On-chain/Risk do not provide a strong enough conviction to enter a trade, especially when considering the bearish stances from Research and Smart-Money Flow desks. Therefore, abstaining from a trade is the most prudent decision to protect capital.",
+      "rebuttal": "The BULL's argument relies heavily on the OI-Contrarian validated edge, but this edge is based on a small sample size and is not sufficient to outweigh the lack of a validated trend-following edge and the extremely bearish market sentiment. The Regime/Technical desk's accurate regime classification is not a reliable indicator of trading profit, and the current Trending_Up regime does not guarantee future gains. Therefore, capital protection should be the primary concern, and abstaining from a long position is the most prudent decision. ",
       "conceded": [
-        "The Regime/Technical desk's accurate regime classifier (82.6% OOS) is notable, but it does not translate to a validated trading edge",
-        "The Macro (Allora) desk's neutral outlook for BTC is a valid point, but it does not outweigh the lack of a validated edge and the bearish stances from other desks"
+        "OI-Contrarian validated edge with p_win 0.5882, payoff 1.304, and OOS ROI 28.91%"
       ]
     }
   },
   "decision": {
     "decision": "ABSTAIN",
     "direction": "NONE",
-    "confidence": "high",
-    "reasoning": "The validated engine status indicates no validated trend-following edge, and the Regime/Technical desk has a high confidence stance to avoid trades. The Macro/Allora desk has a neutral outlook, and the On-chain/Risk desk indicates a neutral whale flow and low token risk. The Research and Smart-Money Flow desks have bearish stances, but the lack of a validated edge and neutral macro outlook suggest that abstaining from a trade is the most prudent decision. The bull-vs-bear debate highlights the importance of capital protection in the absence of a validated edge, and the bear's rebuttal emphasizes the need to prioritize risk management over potential gains.",
-    "desk_consensus": "Regime/Technical, Research, and Smart-Money Flow desks agree on avoiding or abstaining from trades, while Macro/Allora and On-chain/Risk desks have neutral stances",
+    "confidence": "medium",
+    "reasoning": "The OI-Contrarian desk's validated edge is not sufficient to outweigh the lack of a validated trend-following edge and the extremely bearish market sentiment, and the risk-gate feedback indicates that the current setup cannot reach a favorable risk-reward ratio, leading to a decision to abstain from a long position.",
+    "desk_consensus": "Regime/Technical and Research desks are cautious, while Macro, On-chain/Risk, and Smart-Social desks are neutral, and Smart-Money Flow is bearish, with OI-Contrarian being bullish but not enough to justify an entry",
     "self_management": [
-      "Monitor regime classifier accuracy and trend-following edge validation",
-      "Review and adjust risk management strategies to prioritize capital protection"
-    ]
+      "reassess market conditions",
+      "monitor risk-gate feedback"
+    ],
+    "trade_ticket": null,
+    "ticket_note": "ABSTAIN after risk-gate repair #1 (disciplined)"
   }
 }

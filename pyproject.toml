@@ -21,6 +21,7 @@ dependencies = [
     "joblib>=1.4.2",
     "ta>=0.11.0",
     "ccxt>=4.4.0",
+    "pybit>=5.8.0",
     "structlog>=24.4.0",
     "tenacity>=9.0.0",
 ]
