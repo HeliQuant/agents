@@ -1,4 +1,5 @@
 """Probe Etherscan API v2 (multichain) for Mantle (chainid 5000) whale-tracking data."""
+import os
 from pathlib import Path
 import requests
 

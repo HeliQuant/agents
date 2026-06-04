@@ -10,6 +10,7 @@ Run: python scripts/50_capital_flow_desk.py
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
 from pathlib import Path
