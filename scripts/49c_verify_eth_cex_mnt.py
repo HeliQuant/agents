@@ -12,7 +12,7 @@ try:
 except Exception:  # noqa: BLE001
     pass
 
-KEY = os.environ.get("MANTLESCAN_API_KEY") or "ARKZEP422CW6ASTDKJ2AESEGUVKPHI16RF"
+KEY = os.environ.get("MANTLESCAN_API_KEY") or os.environ.get("MANTLESCAN_API_KEY", "")
 BASE = "https://api.etherscan.io/v2/api"
 MNT_L1 = "0x3c3a81e81dc49A522A592e7622A7E711c06bf354"
 CEX = {

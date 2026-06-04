@@ -26,7 +26,7 @@ except Exception:  # noqa: BLE001
 ROOT = Path(__file__).resolve().parents[1]
 ESCAN = "https://api.etherscan.io/v2/api"
 DS = "https://api.dexscreener.com"
-KEY = os.environ.get("MANTLESCAN_API_KEY") or "ARKZEP422CW6ASTDKJ2AESEGUVKPHI16RF"
+KEY = os.environ.get("MANTLESCAN_API_KEY") or os.environ.get("MANTLESCAN_API_KEY", "")
 
 # Holder composition MEASURED this session (scripts 46/47). contract_balance_pct = share of top-holder
 # balance held by contracts. >0.5 → CONTRACT mode.

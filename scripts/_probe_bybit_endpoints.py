@@ -1,8 +1,9 @@
 """Explore Bybit v5 TESTNET endpoints. PUBLIC (market) = no auth. PRIVATE = needs secret (HMAC)."""
+import os
 import requests
 
 BASE = "https://api-testnet.bybit.com"
-RO_KEY = "uJDlBD7blDp7guhmCR"   # testnet read-only (key only, no secret shared)
+RO_KEY = os.environ.get("BYBIT_API_KEY_READONLY", "")   # testnet read-only (key only, no secret shared)
 
 
 def show(label, url, params):

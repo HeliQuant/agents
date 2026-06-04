@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DS = "https://api.dexscreener.com"
 BYBIT = "https://api.bybit.com/v5/market/tickers"
 ESCAN = "https://api.etherscan.io/v2/api"
-EKEY = "ARKZEP422CW6ASTDKJ2AESEGUVKPHI16RF"
+EKEY = os.environ.get("MANTLESCAN_API_KEY", "")
 METH_STAKING_L1 = "0xe3cBd06D7dadB3F4e6557bAb7EdD924CD1489E8f"
 
 ASSETS = ["WMNT", "mETH", "cmETH", "USDe", "FBTC"]

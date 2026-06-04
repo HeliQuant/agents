@@ -11,7 +11,7 @@ try:
 except Exception:  # noqa: BLE001
     pass
 
-KEY = os.environ.get("MANTLESCAN_API_KEY") or "ARKZEP422CW6ASTDKJ2AESEGUVKPHI16RF"
+KEY = os.environ.get("MANTLESCAN_API_KEY") or os.environ.get("MANTLESCAN_API_KEY", "")
 BASE = "https://api.etherscan.io/v2/api"
 
 TOKENS = {  # token contracts to confirm (tokensupply + getcode)

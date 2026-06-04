@@ -8,7 +8,7 @@ for line in (ROOT.parent / ".env").read_text(encoding="utf-8", errors="ignore").
     if "=" in line and not line.strip().startswith("#"):
         k, _, v = line.partition("=")
         env[k.strip()] = v.strip()
-KEY = env.get("MANTLESCAN_API_KEY") or env.get("ETHERSCAN_API_KEY") or "ARKZEP422CW6ASTDKJ2AESEGUVKPHI16RF"
+KEY = env.get("MANTLESCAN_API_KEY") or env.get("ETHERSCAN_API_KEY") or os.environ.get("MANTLESCAN_API_KEY", "")
 BASE = "https://api.etherscan.io/v2/api"
 WMNT = "0x78c1b0c915c4faa5fffa6cabf0219da63d7f4cb8"   # wrapped MNT (ERC-20)
 METH = "0xcDA86A272531e8640cD7F1a92c01839911B90bb0"   # mETH (ERC-20)
