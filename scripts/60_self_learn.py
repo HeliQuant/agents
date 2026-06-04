@@ -27,7 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from firm.edge_lab import live_signal, onboard  # noqa: E402
+from firm.edge_lab import is_stable_robust, live_signal, onboard  # noqa: E402
 
 DATA = ROOT / "data"
 VAL = DATA / "validated_edges.json"
@@ -35,8 +35,19 @@ CAND = DATA / "candidate_edges.json"
 LEDGER = DATA / "paper_ledger.jsonl"
 
 
+CONFIRM_NEEDED = 2  # a JUST-CROSSED edge must confirm on this many NEW-DATA cycles before live graduation
+
+
 def _load(p):
     return json.loads(p.read_text()) if p.exists() else {}
+
+
+def _latest_bar(asset: str) -> str:
+    """Latest data bar's datetime (lightweight CSV-tail read) — the 'new evidence' clock for confirmation."""
+    try:
+        return (DATA / f"{asset.lower()}_positioning.csv").read_text().strip().splitlines()[-1].split(",")[1]
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _revalidate(asset):
@@ -88,10 +99,24 @@ def main():
         sig = _paper_tick(a, e.get("edge", edge or ""))
         live = sig.get("signal") or "wait (no extreme)"
         if robust:
-            promote[a] = {k: v for k, v in e.items() if k not in ("tier",)}
-            promote[a].update({"validated": True})
-            print(f"  🎓 {a:5} {e.get('edge'):14} GRADUATED -> VALIDATED!  (now robust: {roi:+.1f}% OOS, "
-                  f"WF {wf.get('positive')}/{wf.get('folds')}, ex-best {wf.get('ex_best_mean')}%)")
+            stab = is_stable_robust(a, e.get("edge", edge or ""), DATA)  # cross-snapshot STABILITY gate
+            if stab.get("stable"):
+                cur_bar = _latest_bar(a)
+                advanced = bool(cur_bar) and cur_bar != e.get("last_confirm_bar", "")  # NEW-DATA passes only
+                conf = int(e.get("confirmations", 0)) + (1 if advanced else 0)
+                if conf >= CONFIRM_NEEDED:
+                    promote[a] = {k: v for k, v in e.items() if k not in ("tier", "confirmations", "last_confirm_bar")}
+                    promote[a].update({"validated": True})
+                    print(f"  🎓 {a:5} {e.get('edge'):14} GRADUATED -> VALIDATED!  robust {roi:+.1f}%, stable, "
+                          f"AND confirmed {conf}x over new data → earned live size.")
+                else:
+                    e["confirmations"], e["last_confirm_bar"] = conf, cur_bar  # persisted on --apply
+                    print(f"  🕐 {a:5} {e.get('edge'):14} PROBATION {conf}/{CONFIRM_NEEDED}: passes gate+stable NOW "
+                          f"({roi:+.1f}%) but JUST crossed — must hold {CONFIRM_NEEDED-conf} more NEW-DATA cycle(s) "
+                          f"before live capital (regime-dependent; confirm before we trust it).")
+            else:
+                print(f"  ⏸️ {a:5} {e.get('edge'):14} robust NOW ({roi:+.1f}%) but UNSTABLE across snapshots "
+                      f"(robust_at={stab.get('robust_at')}) -> HELD (anti-flicker).")
         else:
             xb = wf.get("ex_best_mean") if wf else "?"
             print(f"  📝 {a:5} {e.get('edge'):14} still candidate (paper)  re-val 1-split {roi if roi is not None else '—'}% "

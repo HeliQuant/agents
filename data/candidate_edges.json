@@ -8,6 +8,8 @@
     "sample_n": 111,
     "oos_roi_pct": 92.49,
     "note": "flow_contrarian via edge_lab onboarding (non-overlap 24h, cost-aware OOS, 3/5 walk-forward folds +ve). avg 72.0bps > 11.0bps fee; sample 111. CANDIDATE \u2014 passed 1-split but NOT walk-forward-robust; paper-trade only until graduated by self-learning (scripts/60).",
-    "tier": "candidate"
+    "tier": "candidate",
+    "confirmations": 1,
+    "last_confirm_bar": "2026-06-04 10:00:00+00:00"
   }
 }

@@ -209,3 +209,26 @@ def onboard(asset: str, data_dir) -> dict:
         best["wf"] = walk_forward(close, SIGNAL_SOURCES[best["source"]](df).values)
         best["robust"] = bool(best["wf"] and best["wf"].get("consistent"))
     return {"asset": asset.upper(), "results": results, "earned": best}
+
+
+def is_stable_robust(asset: str, edge: str, data_dir, cutoffs=(0.85, 0.92, 1.0)) -> dict:
+    """STABILITY gate for graduation: an edge graduates to live ONLY if it's robust CONSISTENTLY
+    across recent data cutoffs — not on a single lucky snapshot. An edge whose robustness FLIPS on a
+    few new bars is unstable -> hold. (Motivated by HYPE flipping fragile<->robust on ~14 fresh bars:
+    a per-snapshot pass is necessary but NOT sufficient; cross-time stability is what earns live size.)"""
+    if edge not in _EDGE_SRC:
+        return {"stable": False, "robust_at": [], "note": f"unknown edge {edge}"}
+    src, _ = _EDGE_SRC[edge]
+    fp = Path(data_dir) / f"{asset.lower()}_positioning.csv"
+    if not fp.exists():
+        return {"stable": False, "robust_at": [], "note": "no data"}
+    full = pd.read_csv(fp).sort_values("timestamp").reset_index(drop=True)
+    robust_at = []
+    for f in cutoffs:
+        df = full.iloc[: int(len(full) * f)].reset_index(drop=True)
+        c = df["close"].values
+        sig = SIGNAL_SOURCES[src](df).values
+        m = validate_signal(c, sig)
+        wf = walk_forward(c, sig)
+        robust_at.append(bool(m and m["passed"] and wf and wf.get("consistent")))
+    return {"cutoffs": list(cutoffs), "robust_at": robust_at, "stable": all(robust_at)}
