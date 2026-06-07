@@ -36,6 +36,9 @@ LEDGER = DATA / "paper_ledger.jsonl"
 
 
 CONFIRM_NEEDED = 2  # a JUST-CROSSED edge must confirm on this many NEW-DATA cycles before live graduation
+MIN_CONFIRM_GAP_HOURS = 20  # ...and each confirmation counts ONLY if the new data is >= this many hours past
+#                             the previous confirmation's bar — a genuinely SEPARATE market window (~a day),
+#                             so a few fresh bars can NEVER rush a graduation. Anti-gaming, enforced in code.
 
 
 def _load(p):
@@ -48,6 +51,14 @@ def _latest_bar(asset: str) -> str:
         return (DATA / f"{asset.lower()}_positioning.csv").read_text().strip().splitlines()[-1].split(",")[1]
     except Exception:  # noqa: BLE001
         return ""
+
+
+def _bar_dt(s: str):
+    """Parse a bar's 'datetime' cell -> aware datetime (None if unparseable) for the new-data gap check."""
+    try:
+        return datetime.fromisoformat((s or "").strip())
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _revalidate(asset):
@@ -102,18 +113,31 @@ def main():
             stab = is_stable_robust(a, e.get("edge", edge or ""), DATA)  # cross-snapshot STABILITY gate
             if stab.get("stable"):
                 cur_bar = _latest_bar(a)
-                advanced = bool(cur_bar) and cur_bar != e.get("last_confirm_bar", "")  # NEW-DATA passes only
+                last_cb = e.get("last_confirm_bar", "")
+                # A confirmation counts ONLY on NEW data a MEANINGFUL gap past the last confirmation
+                # (>= MIN_CONFIRM_GAP_HOURS) — a few fresh bars can't rush graduation (anti-gaming, in code).
+                advanced, gap_note = False, ""
+                if cur_bar and cur_bar != last_cb:
+                    if not last_cb:
+                        advanced = True  # first observation (0->1) always counts
+                    else:
+                        cd, ld = _bar_dt(cur_bar), _bar_dt(last_cb)
+                        gap_h = (cd - ld).total_seconds() / 3600.0 if (cd and ld) else 0.0
+                        advanced = gap_h >= MIN_CONFIRM_GAP_HOURS
+                        if not advanced:
+                            gap_note = (f" — new data only +{gap_h:.0f}h (< {MIN_CONFIRM_GAP_HOURS}h min for a "
+                                        f"fresh window); last_confirm clock keeps running")
                 conf = int(e.get("confirmations", 0)) + (1 if advanced else 0)
                 if conf >= CONFIRM_NEEDED:
                     promote[a] = {k: v for k, v in e.items() if k not in ("tier", "confirmations", "last_confirm_bar")}
                     promote[a].update({"validated": True})
-                    print(f"  🎓 {a:5} {e.get('edge'):14} GRADUATED -> VALIDATED!  robust {roi:+.1f}%, stable, "
-                          f"AND confirmed {conf}x over new data → earned live size.")
+                    print(f"  🎓 {a:5} {e.get('edge'):14} GRADUATED -> VALIDATED!  robust {roi:+.1f}%, stable, AND "
+                          f"confirmed {conf}x over new data (>= {MIN_CONFIRM_GAP_HOURS}h apart) → earned live size.")
                 else:
-                    e["confirmations"], e["last_confirm_bar"] = conf, cur_bar  # persisted on --apply
+                    if advanced:
+                        e["confirmations"], e["last_confirm_bar"] = conf, cur_bar  # persisted on --apply
                     print(f"  🕐 {a:5} {e.get('edge'):14} PROBATION {conf}/{CONFIRM_NEEDED}: passes gate+stable NOW "
-                          f"({roi:+.1f}%) but JUST crossed — must hold {CONFIRM_NEEDED-conf} more NEW-DATA cycle(s) "
-                          f"before live capital (regime-dependent; confirm before we trust it).")
+                          f"({roi:+.1f}%){gap_note or ' — hold one more fresh window before live capital'}.")
             else:
                 print(f"  ⏸️ {a:5} {e.get('edge'):14} robust NOW ({roi:+.1f}%) but UNSTABLE across snapshots "
                       f"(robust_at={stab.get('robust_at')}) -> HELD (anti-flicker).")
