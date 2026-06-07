@@ -20,7 +20,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-FEE = 0.00055    # Bybit perp taker per side (matches scripts/39)
+FEE = 0.00055    # exchange taker per side (matches scripts/39)
+SLIPPAGE = 0.00045  # spread + slippage per side on a LIQUID venue (~4.5 bps). Added 2026-06-07 for HONEST
+#                     execution cost: a real fill pays fee + half-spread + slippage, NOT just the fee. (A live
+#                     100-trade test showed the wider TESTNET spread ~190 bps eats any edge — so trade liquid
+#                     venues only, and validate against realistic cost, not the optimistic fee-only number.)
+COST = FEE + SLIPPAGE  # per-side execution cost used by the validation gate (round-trip = 2*COST = ~20 bps)
 H = 24           # hold / non-overlap window (hours)
 MIN_TRADES = 20  # >= 20 OOS samples before trusting an edge (also the Kelly-trust threshold)
 
@@ -70,7 +75,7 @@ def validate_signal(close: np.ndarray, sig: np.ndarray) -> dict | None:
             pos = 1 if contrarian else -1
         else:
             continue
-        net = pos * (close[i + H] / close[i] - 1) - 2 * FEE
+        net = pos * (close[i + H] / close[i] - 1) - 2 * COST
         eq *= 1 + net
         trades += 1
         wins += int(net > 0)
@@ -82,7 +87,7 @@ def validate_signal(close: np.ndarray, sig: np.ndarray) -> dict | None:
     ls = [r for r in rets if r <= 0]
     payoff = (np.mean(w) / abs(np.mean(ls))) if (w and ls) else 0.0
     avg_bps = float(np.mean(rets) * 1e4)
-    rt_fee_bps = 2 * FEE * 1e4
+    rt_fee_bps = 2 * COST * 1e4  # realistic round-trip cost (fee + spread + slippage), not fee-only
     oos_roi = (eq - 1) * 100
     passed = bool(oos_roi > 0 and oos_roi > bh * 100 and avg_bps > rt_fee_bps
                   and payoff > 0 and trades >= MIN_TRADES)
@@ -125,7 +130,7 @@ def walk_forward(close: np.ndarray, sig: np.ndarray, k: int = 5) -> dict | None:
                 pos = 1 if contrarian else -1
             else:
                 continue
-            eq *= 1 + (pos * (close[i + H] / close[i] - 1) - 2 * FEE)
+            eq *= 1 + (pos * (close[i + H] / close[i] - 1) - 2 * COST)
             tr += 1
         if tr > 0:
             fold_rois.append(round((eq - 1) * 100, 2))
