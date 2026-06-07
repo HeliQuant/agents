@@ -739,6 +739,10 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
         _carry_brief = _cb()
     except Exception:  # noqa: BLE001 — carry desk is optional + network-bound; never let it break the org
         _carry_brief = ""
+    if verbose and _dw_brief:
+        print(f"   ▸ desk-weights prior (efficiency-aware): {_dw_brief[:240]}")
+    if verbose and _carry_brief:
+        print(f"   ▸ {_carry_brief[:180]}")
     decision = run_pm(ticker, desks[0][1], analysts, debate, verbose=verbose,
                       memory_brief=memory_brief, desk_weights_brief=_dw_brief, carry_brief=_carry_brief)
     decision = finalize_decision(ticker, decision, desks, desks[0][1], analysts, debate, verbose=verbose)
