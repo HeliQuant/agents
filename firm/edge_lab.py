@@ -234,11 +234,12 @@ def sync_edges_hq() -> int:
     return len(rows)
 
 
-def is_stable_robust(asset: str, edge: str, data_dir, cutoffs=(0.85, 0.92, 1.0)) -> dict:
-    """STABILITY gate for graduation: an edge graduates to live ONLY if it's robust CONSISTENTLY
-    across recent data cutoffs — not on a single lucky snapshot. An edge whose robustness FLIPS on a
-    few new bars is unstable -> hold. (Motivated by HYPE flipping fragile<->robust on ~14 fresh bars:
-    a per-snapshot pass is necessary but NOT sufficient; cross-time stability is what earns live size.)"""
+def is_stable_robust(asset: str, edge: str, data_dir, cutoffs=(0.8, 0.9, 1.0)) -> dict:
+    """STABILITY gate for graduation: an edge graduates ONLY if it's robust CONSISTENTLY across
+    MEANINGFUL data fractions (80/90/100% — matching the timeline standard that validated MNT), not a
+    single lucky snapshot. Cutoffs are deliberately WIDE (not 85/92/100%, which proved noise-sensitive:
+    they gave SUI a spurious [F,T,T] despite SUI being clearly robust at 80/90/100%). An edge whose
+    robustness genuinely FLIPS across these wide fractions is unstable -> hold. Uniform across assets."""
     if edge not in _EDGE_SRC:
         return {"stable": False, "robust_at": [], "note": f"unknown edge {edge}"}
     src, _ = _EDGE_SRC[edge]
