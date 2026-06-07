@@ -69,7 +69,15 @@ class _LogWriter(io.TextIOBase):
 
 STATE: dict = {"started_utc": datetime.now(timezone.utc).isoformat(), "cycles": 0,
                "last_cycle_utc": None, "last_error": None, "decisions": deque(maxlen=50),
-               "assets": ASSETS, "interval_min": INTERVAL_MIN, "execute": EXECUTE, "last_ingest": None}
+               "assets": ASSETS, "interval_min": INTERVAL_MIN, "execute": EXECUTE, "last_ingest": None,
+               "last_cycle_epoch": 0.0}
+
+# Bulletproof external-trigger lock: an uptime pinger hits /run-cycle every few min — that keeps the
+# container warm AND drives cycles independently of the internal sleep-loop (which a sleeping/suspended
+# host can freeze). The gap guard means frequent pings are cheap keep-alive no-ops; a real cycle only
+# fires every MIN_CYCLE_GAP_S. Lock prevents overlapping cycles.
+_cycle_lock = threading.Lock()
+MIN_CYCLE_GAP_S = max(INTERVAL_MIN * 60 - 120, 300)  # ~the interval, minus slack; >=5min floor
 
 
 def _refresh(asset: str) -> None:
@@ -137,18 +145,31 @@ def cycle() -> None:
     log("================ CYCLE DONE ================")
 
 
+def _do_cycle() -> bool:
+    """Run ONE cycle under the lock (skips if one is already running). BOTH the internal loop and the
+    external /run-cycle trigger go through here — so cycles never overlap. Returns True if it ran."""
+    if not _cycle_lock.acquire(blocking=False):
+        return False
+    try:
+        cycle()
+        STATE["cycles"] += 1
+        STATE["last_cycle_utc"] = datetime.now(timezone.utc).isoformat()
+        STATE["last_cycle_epoch"] = time.time()
+        STATE["last_error"] = None
+    except Exception as e:  # noqa: BLE001
+        STATE["last_error"] = str(e)[:200]
+        log("CYCLE ERROR: " + _sanitize(traceback.format_exc()[-400:]))
+    finally:
+        _cycle_lock.release()
+    return True
+
+
 def _loop() -> None:
     log(f"HeliQuant loop starting: assets={ASSETS} interval={INTERVAL_MIN}min execute={EXECUTE}")
     while True:
-        try:
-            cycle()
-            STATE["cycles"] += 1
-            STATE["last_cycle_utc"] = datetime.now(timezone.utc).isoformat()
-            STATE["last_error"] = None
-        except Exception as e:  # noqa: BLE001
-            STATE["last_error"] = str(e)[:200]
-            log("LOOP ERROR: " + _sanitize(traceback.format_exc()[-400:]))
-        time.sleep(INTERVAL_MIN * 60)
+        if time.time() - STATE["last_cycle_epoch"] >= MIN_CYCLE_GAP_S:
+            _do_cycle()
+        time.sleep(60)  # wake every minute; the gap guard + external /run-cycle decide when a cycle fires
 
 
 app = FastAPI(title="HeliQuant")
@@ -162,6 +183,22 @@ def _start():
 @app.get("/health")
 def health():
     return PlainTextResponse("ok")
+
+
+@app.get("/run-cycle")
+def run_cycle():
+    """Keep-alive + external cycle driver. Point an uptime pinger here (every few min). Frequent pings are
+    cheap no-ops (keep the host warm); a real cycle fires only when MIN_CYCLE_GAP_S has elapsed — robust
+    even if the internal loop is frozen by a suspended host."""
+    now = time.time()
+    gap = now - STATE["last_cycle_epoch"]
+    if gap < MIN_CYCLE_GAP_S:
+        return JSONResponse({"status": "alive — next cycle not due yet", "cycles": STATE["cycles"],
+                             "mins_to_next": round((MIN_CYCLE_GAP_S - gap) / 60, 1)})
+    if _cycle_lock.locked():
+        return JSONResponse({"status": "cycle already running", "cycles": STATE["cycles"]})
+    threading.Thread(target=_do_cycle, daemon=True).start()
+    return JSONResponse({"status": "cycle triggered", "cycles": STATE["cycles"]})
 
 
 @app.get("/logs")
