@@ -188,6 +188,33 @@ def decisions():
     return JSONResponse(list(STATE["decisions"]))
 
 
+@app.get("/probe")
+def probe():
+    """Test which exchange/data hosts are reachable FROM RAILWAY's IP (answers: can HeliQuant fetch Bybit here?)."""
+    import requests
+    targets = {
+        "bybit_mainnet": ("GET", "https://api.bybit.com/v5/market/time", None),
+        "bybit_testnet": ("GET", "https://api-testnet.bybit.com/v5/market/time", None),
+        "binance": ("GET", "https://fapi.binance.com/fapi/v1/time", None),
+        "hyperliquid": ("POST", "https://api.hyperliquid.xyz/info", {"type": "meta"}),
+        "groq": ("GET", "https://api.groq.com/openai/v1/models", None),
+    }
+    out = {}
+    for name, (method, url, body) in targets.items():
+        try:
+            t = time.time()
+            r = requests.post(url, json=body, timeout=12) if method == "POST" else requests.get(url, timeout=12)
+            try:
+                r.json(); json_ok = True
+            except Exception:  # noqa: BLE001
+                json_ok = False
+            out[name] = {"status": r.status_code, "ms": int((time.time() - t) * 1000),
+                         "json_ok": json_ok, "snippet": _sanitize(r.text[:70])}
+        except Exception as e:  # noqa: BLE001
+            out[name] = {"error": f"{type(e).__name__}: {str(e)[:90]}"}
+    return JSONResponse(out)
+
+
 @app.get("/", response_class=HTMLResponse)
 def home():
     last = STATE["last_cycle_utc"] or "warming up"
