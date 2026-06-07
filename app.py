@@ -185,11 +185,12 @@ def health():
     return PlainTextResponse("ok")
 
 
-@app.get("/run-cycle")
+@app.api_route("/run-cycle", methods=["GET", "HEAD"])
 def run_cycle():
-    """Keep-alive + external cycle driver. Point an uptime pinger here (every few min). Frequent pings are
-    cheap no-ops (keep the host warm); a real cycle fires only when MIN_CYCLE_GAP_S has elapsed — robust
-    even if the internal loop is frozen by a suspended host."""
+    """Keep-alive + external cycle driver. Point an uptime pinger here (every few min). Accepts HEAD too —
+    UptimeRobot & most monitors send HEAD by default (a GET-only route returns 405 and the ping is a no-op).
+    Frequent pings are cheap no-ops (keep the host warm); a real cycle fires only when MIN_CYCLE_GAP_S has
+    elapsed — robust even if the internal loop is frozen by a suspended host."""
     now = time.time()
     gap = now - STATE["last_cycle_epoch"]
     if gap < MIN_CYCLE_GAP_S:
