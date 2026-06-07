@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+requests
+pandas
+numpy
+python-dotenv
+supabase
+pybit
+eth-account
+web3
