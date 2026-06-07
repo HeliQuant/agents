@@ -4,9 +4,9 @@
     "asset": "MNT",
     "validated": true,
     "p_win": 0.5882,
-    "payoff_b": 1.304,
+    "payoff_b": 1.22,
     "sample_n": 34,
-    "oos_roi_pct": 28.91,
-    "note": "OI-contrarian, OOS (non-overlap 24h, cost-aware). Hedge-like + bear-amplified + small-sample -> caveated; sizing still gates on sample_n>=20."
+    "oos_roi_pct": 25.1,
+    "note": "OI-contrarian, OOS (non-overlap 24h). Net of REALISTIC cost = fee + spread + slippage (~20 bps round-trip), not fee-only (was +28.9%@11bps). Gross edge ~+90 bps/trade; net +70.4 bps. Hedge-like + bear-amplified + small-sample -> caveated; LIQUID-venue only (wide spread eats it); sizing gates on sample_n>=20."
   }
 }
