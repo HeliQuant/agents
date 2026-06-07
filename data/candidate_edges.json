@@ -46,5 +46,16 @@
     "oos_roi_pct": 67.0,
     "note": "funding_fade via edge_lab onboarding (non-overlap 24h, cost-aware OOS, 2/5 walk-forward folds +ve). avg 42.6bps > 11.0bps fee; sample 182. CANDIDATE \u2014 passed 1-split, not walk-forward-robust; paper-only.",
     "tier": "candidate"
+  },
+  "MNT": {
+    "edge": "oi_contrarian",
+    "asset": "MNT",
+    "validated": false,
+    "p_win": 0.5882,
+    "payoff_b": 1.22,
+    "sample_n": 34,
+    "oos_roi_pct": 25.1,
+    "note": "OI-contrarian, OOS (non-overlap 24h). Net of REALISTIC cost = fee + spread + slippage (~20 bps round-trip), not fee-only (was +28.9%@11bps). Gross edge ~+90 bps/trade; net +70.4 bps. Hedge-like + bear-amplified + small-sample -> caveated; LIQUID-venue only (wide spread eats it); sizing gates on sample_n>=20.",
+    "tier": "candidate"
   }
 }
