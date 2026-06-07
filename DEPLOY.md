@@ -41,3 +41,31 @@
 
 ## After deploy
 Share the **`/logs`** URL with me — I'll fetch it to watch HeliQuant analyze + (rarely) trade, live.
+
+---
+
+## 🏗️ Modular architecture (exchanges are geo-blocked from the cloud)
+
+Verified via `/probe`: from Railway's IP, **Bybit = 403 (CloudFront), Binance = 451** (blocked); **Hyperliquid + Groq work**. So the data/execution EDGE must run locally (where exchanges are reachable via WARP); the BRAIN runs in the cloud. They connect over HTTP:
+
+```
+  LOCAL (your machine, WARP on)                CLOUD (Railway, always-on)
+  ├─ scripts/85 local data engine  ──POST /ingest──►  app.py brain
+  │    fetch Bybit positioning → push          │    self-learning + 7-desk org + PM
+  └─ scripts/82,83 local executor  ◄──/decisions──┘   /logs /status /decisions (monitor)
+       execute firm ENTERs on Bybit
+```
+
+### Cloud setup (one extra var)
+In Railway Variables add: **`INGEST_TOKEN=<any-long-random-string>`** (enables `/ingest`) and set
+**`REFRESH_DATA=0`** (the cloud can't reach Bybit; it consumes the local engine's feed instead).
+
+### Run the local engine (judges: this is your half)
+On a machine that can reach Bybit (WARP on):
+```bash
+python scripts/85_local_engine.py MNT --cloud https://<your-app>.up.railway.app \
+       --token <same-INGEST_TOKEN> --loop --interval 30
+```
+It fetches fresh data and POSTs it to the cloud every 30 min → the cloud brain self-learns on live data.
+Verify on the cloud `/status` → `last_ingest` shows your latest push. Execution stays local
+(`scripts/82`/`83`) since orders must hit Bybit from a reachable IP.
