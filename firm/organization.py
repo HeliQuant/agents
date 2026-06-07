@@ -724,8 +724,13 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
     debate = run_debate(desks, analysts, verbose=verbose)
     # ADDITIVE self-learning: advisory desk-reliability prior (empty if none learned -> org unchanged).
     try:
+        from firm import asset_efficiency as _ae
         from firm import desk_performance as _dp
-        _dw_brief = _dp.weights_brief(_dp.load_weights(ticker))  # PER-ASSET desk-reliability prior
+        _w = _dp.load_weights(ticker)                       # PER-ASSET desk-reliability prior (track record)
+        _w, _eff_brief = _ae.efficiency_tilt(ticker, _w)    # tilt toward FLOW desks if asset can't be predicted
+        _dw_brief = _dp.weights_brief(_w)
+        if _eff_brief:
+            _dw_brief = (_dw_brief + " " + _eff_brief).strip()
     except Exception:  # noqa: BLE001 — desk-learning is optional; never let it break the org
         _dw_brief = ""
     # ADDITIVE carry desk: market-neutral yield advisory (empty if nothing harvestable -> org unchanged).
