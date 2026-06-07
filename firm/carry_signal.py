@@ -27,7 +27,13 @@ CRASH_CLASS = {
     "SUIUSDT": ("lumpy", "basis dislocated to -166 bps + funding spiked -16.8 bps/8h in worst crashes"),
     "BTCUSDT": ("tame", "basis <=11 bps, funding stayed +ve — but carry too thin to use"),
     "ETHUSDT": ("tame", "majors: tame basis but thin funding"),
+    "MNTUSDT": ("moderate", "basis max ~28 bps (near HYPE-robust) but funding turns ~-2 bps/8h in worst "
+                            "crashes — Mantle-eco carry +3.3% net/90d (100% WF+), size down vs HYPE"),
 }
+
+# Rigorous multi-asset carry scan (scripts/79, 2026-06-07, net of funding+basis-4legs, walk-forward @90d hold):
+# HYPE +5.8% (100% WF+, >RF) = primary harvest · SUI +4.3% & MNT +3.3% (100% WF+, sub-RF) = diversifiers ·
+# BTC +2.8% & ETH +2.5% (sub-RF, 1 WF bucket -ve) = weak · SOL -0.6% = no carry. All funding-driven (basis~0).
 
 
 def _fetch_funding(symbol: str, days: int) -> list[float]:
@@ -81,7 +87,7 @@ def live_carry(symbol: str, lookback_days: int = 60, rf_pct: float = RISK_FREE_P
     }
 
 
-def carry_brief(symbols=("HYPEUSDT", "SUIUSDT", "BTCUSDT", "ETHUSDT")) -> str:
+def carry_brief(symbols=("HYPEUSDT", "SUIUSDT", "MNTUSDT", "BTCUSDT", "ETHUSDT")) -> str:
     """One-line advisory string the PM/org can read (best harvestable carry now). Empty if none qualify."""
     best = None
     for s in symbols:
