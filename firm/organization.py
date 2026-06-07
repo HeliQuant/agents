@@ -514,17 +514,20 @@ def run_debate(desks: list, analysts: dict, verbose: bool = True) -> dict:
 
 
 def run_pm(ticker: str, reg: dict, analysts: dict, debate: dict, verbose: bool = True,
-           extra: str = "", memory_brief: str = "", desk_weights_brief: str = "") -> dict:
+           extra: str = "", memory_brief: str = "", desk_weights_brief: str = "", carry_brief: str = "") -> dict:
     """PHASE 2 — portfolio manager synthesizes all desks into a final decision.
     `extra` carries a risk-gate repair note; `memory_brief` carries recall of past resolved trades
     (the learning-loop); `desk_weights_brief` is an ADVISORY desk-reliability prior (additive — empty
-    string means no change, gates are never altered) so the PM gets 'smarter with use'."""
+    string means no change, gates are never altered) so the PM gets 'smarter with use'.
+    `carry_brief` is an ADVISORY market-neutral yield note (delta-neutral funding carry — additive,
+    non-directional; empty means none harvestable -> no change; never alters the directional gates)."""
     head_user = (
         f"Asset: {ticker}\n\n"
         + (("AGENT MEMORY (recall of past resolved trades — weigh this history):\n" + memory_brief + "\n\n")
            if memory_brief else "")
         + (("DESK RELIABILITY PRIORS (learned from track record — ADVISORY only, gates unchanged):\n"
             + desk_weights_brief + "\n\n") if desk_weights_brief else "")
+        + ((carry_brief + "\n\n") if carry_brief else "")
         + "Validated engine status:\n"
         + json.dumps({
             "current_regime": reg.get("current_regime"),
@@ -725,8 +728,14 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
         _dw_brief = _dp.weights_brief(_dp.load_weights(ticker))  # PER-ASSET desk-reliability prior
     except Exception:  # noqa: BLE001 — desk-learning is optional; never let it break the org
         _dw_brief = ""
+    # ADDITIVE carry desk: market-neutral yield advisory (empty if nothing harvestable -> org unchanged).
+    try:
+        from firm.carry_signal import carry_brief as _cb
+        _carry_brief = _cb()
+    except Exception:  # noqa: BLE001 — carry desk is optional + network-bound; never let it break the org
+        _carry_brief = ""
     decision = run_pm(ticker, desks[0][1], analysts, debate, verbose=verbose,
-                      memory_brief=memory_brief, desk_weights_brief=_dw_brief)
+                      memory_brief=memory_brief, desk_weights_brief=_dw_brief, carry_brief=_carry_brief)
     decision = finalize_decision(ticker, decision, desks, desks[0][1], analysts, debate, verbose=verbose)
     if verbose:
         print("\n" + "=" * 74)
