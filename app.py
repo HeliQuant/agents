@@ -28,7 +28,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 ROOT = Path(__file__).resolve().parent
@@ -69,7 +69,7 @@ class _LogWriter(io.TextIOBase):
 
 STATE: dict = {"started_utc": datetime.now(timezone.utc).isoformat(), "cycles": 0,
                "last_cycle_utc": None, "last_error": None, "decisions": deque(maxlen=50),
-               "assets": ASSETS, "interval_min": INTERVAL_MIN, "execute": EXECUTE}
+               "assets": ASSETS, "interval_min": INTERVAL_MIN, "execute": EXECUTE, "last_ingest": None}
 
 
 def _refresh(asset: str) -> None:
@@ -180,6 +180,7 @@ def status():
     return JSONResponse({"started_utc": STATE["started_utc"], "cycles": STATE["cycles"],
                          "last_cycle_utc": STATE["last_cycle_utc"], "last_error": STATE["last_error"],
                          "assets": ASSETS, "interval_min": INTERVAL_MIN, "execute": EXECUTE,
+                         "last_ingest": STATE.get("last_ingest"),
                          "validated_edges": edges, "log_lines": len(LOGS)})
 
 
@@ -213,6 +214,36 @@ def probe():
         except Exception as e:  # noqa: BLE001
             out[name] = {"error": f"{type(e).__name__}: {str(e)[:90]}"}
     return JSONResponse(out)
+
+
+@app.post("/ingest")
+async def ingest(req: Request):
+    """CONNECTOR: the local engine (which CAN reach Bybit via WARP) POSTs fresh positioning data here, so
+    the cloud brain self-learns on live data without Bybit access. Auth: Bearer INGEST_TOKEN (set in Railway).
+    Body: {"asset": "MNT", "csv": "<full positioning csv text>"}."""
+    token = os.environ.get("INGEST_TOKEN")
+    if not token:
+        return JSONResponse({"error": "ingest disabled — set INGEST_TOKEN in Railway to enable"}, status_code=503)
+    if req.headers.get("authorization", "") != f"Bearer {token}":
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    try:
+        body = await req.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "bad json"}, status_code=400)
+    asset = str(body.get("asset", "")).upper()
+    csv_text = body.get("csv")
+    if not asset or not isinstance(csv_text, str) or len(csv_text) < 50:
+        return JSONResponse({"error": "need asset + csv (full positioning text)"}, status_code=400)
+    try:
+        (DATA / f"{asset.lower()}_positioning.csv").write_text(csv_text, encoding="utf-8")
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"write failed: {str(e)[:80]}"}, status_code=500)
+    rows = csv_text.count("\n")
+    last = csv_text.strip().splitlines()[-1].split(",")[1] if "\n" in csv_text else "?"
+    STATE["last_ingest"] = {"asset": asset, "rows": rows, "last_bar": last,
+                            "utc": datetime.now(timezone.utc).isoformat()}
+    log(f"[ingest] received {asset}: {rows} rows, last bar {last} (from local engine)")
+    return JSONResponse({"ok": True, "asset": asset, "rows": rows, "last_bar": last})
 
 
 @app.get("/", response_class=HTMLResponse)
