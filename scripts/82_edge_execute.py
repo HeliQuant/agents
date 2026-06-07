@@ -23,9 +23,12 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 sys.path.insert(0, str(ROOT))
 from firm import bybit_executor as ex  # noqa: E402
-from firm.edge_lab import live_signal  # noqa: E402
+from firm.edge_lab import H as EDGE_HORIZON_H, live_signal  # noqa: E402
 
-HORIZON_H = 24
+# The hold is NOT an arbitrary choice: it's pulled straight from edge_lab.H — the SAME holding window the
+# edge's +25.1% OOS was validated on. So "buy then hold N hours" is the validated edge's own rule executed
+# faithfully, not a test setting. Change the edge's horizon and the executor follows automatically.
+HORIZON_H = EDGE_HORIZON_H
 POS_FILE = DATA / "live_position.json"
 BYBIT = "https://api-testnet.bybit.com"
 
