@@ -514,7 +514,8 @@ def run_debate(desks: list, analysts: dict, verbose: bool = True) -> dict:
 
 
 def run_pm(ticker: str, reg: dict, analysts: dict, debate: dict, verbose: bool = True,
-           extra: str = "", memory_brief: str = "", desk_weights_brief: str = "", carry_brief: str = "") -> dict:
+           extra: str = "", memory_brief: str = "", desk_weights_brief: str = "", carry_brief: str = "",
+           flow_brief: str = "") -> dict:
     """PHASE 2 — portfolio manager synthesizes all desks into a final decision.
     `extra` carries a risk-gate repair note; `memory_brief` carries recall of past resolved trades
     (the learning-loop); `desk_weights_brief` is an ADVISORY desk-reliability prior (additive — empty
@@ -528,6 +529,7 @@ def run_pm(ticker: str, reg: dict, analysts: dict, debate: dict, verbose: bool =
         + (("DESK RELIABILITY PRIORS (learned from track record — ADVISORY only, gates unchanged):\n"
             + desk_weights_brief + "\n\n") if desk_weights_brief else "")
         + ((carry_brief + "\n\n") if carry_brief else "")
+        + ((flow_brief + "\n\n") if flow_brief else "")
         + "Validated engine status:\n"
         + json.dumps({
             "current_regime": reg.get("current_regime"),
@@ -739,12 +741,23 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
         _carry_brief = _cb()
     except Exception:  # noqa: BLE001 — carry desk is optional + network-bound; never let it break the org
         _carry_brief = ""
+    # ADDITIVE flow-intel desk: self-learning flow-signal read — honest-abstains when no flow signal predicts.
+    try:
+        from firm.flow_intel import synthesize as _fsyn
+        _fi = _fsyn(ticker)
+        _flow_brief = (f"FLOW-INTEL DESK (self-learning flow signals — {_fi['reliable_signals']}/4 validate OOS): "
+                       f"{_fi['stance']}. {_fi['note'][:150]} Advisory, non-directional.")
+    except Exception:  # noqa: BLE001 — flow-intel is optional; never let it break the org
+        _flow_brief = ""
     if verbose and _dw_brief:
         print(f"   ▸ desk-weights prior (efficiency-aware): {_dw_brief[:240]}")
     if verbose and _carry_brief:
         print(f"   ▸ {_carry_brief[:180]}")
+    if verbose and _flow_brief:
+        print(f"   ▸ {_flow_brief[:200]}")
     decision = run_pm(ticker, desks[0][1], analysts, debate, verbose=verbose,
-                      memory_brief=memory_brief, desk_weights_brief=_dw_brief, carry_brief=_carry_brief)
+                      memory_brief=memory_brief, desk_weights_brief=_dw_brief, carry_brief=_carry_brief,
+                      flow_brief=_flow_brief)
     decision = finalize_decision(ticker, decision, desks, desks[0][1], analysts, debate, verbose=verbose)
     if verbose:
         print("\n" + "=" * 74)

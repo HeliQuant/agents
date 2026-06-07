@@ -103,6 +103,22 @@ def main():
         else:
             demote.append(a)
             print(f"  ⚠️ {a:5} {e.get('edge'):14} DECAYED -> demote to candidate  (no longer robust)")
+            # GEPA self-improvement: before fully retiring, try to ADAPT the decayed edge (regime/horizon
+            # variants) under the same cross-window + outlier-robust guard. Surfaces a candidate if one survives.
+            try:
+                from firm.edge_evolver import evolve as _evolve
+                from firm.edge_lab import _EDGE_SRC
+                _src = _EDGE_SRC.get(e.get("edge", ""), ("oi_chg24", True))[0]
+                _ev = _evolve(a, _src)
+                _best = _ev.get("best")
+                if _best:
+                    print(f"     🧬 evolver: adaptation candidate — H{_best['H']} '{_best['regime']}' "
+                          f"OOS {_best['oos_roi_pct']:+.1f}% / ex-best {_best['ex_best_roi_pct']:+.1f}% "
+                          f"(best-of-{_ev['n_tested']} → forward-confirm before trading, NOT validated)")
+                else:
+                    print("     🧬 evolver: no robust adaptation survives — edge genuinely dead, retired")
+            except Exception:  # noqa: BLE001 — evolver is additive; never break the loop
+                pass
 
     print("\n── CANDIDATE (paper-only, accumulating evidence) ──")
     for a, e in sorted(cand.items()):
