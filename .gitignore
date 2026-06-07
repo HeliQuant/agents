@@ -43,3 +43,5 @@ data/btc_5m_binance.csv
 data/btc_basis.csv
 data/btc_orderflow.csv
 data/btc_hyperliquid.csv
+
+data/live_position.json
