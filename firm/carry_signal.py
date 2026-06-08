@@ -66,12 +66,10 @@ def _read_cached_carry(symbol: str) -> dict | None:
     computes the carry and pushes the result via /ingest -> data/{symbol}_carry.json. Read that here when
     we can't reach Bybit ourselves. Keeps the carry desk alive in the cloud without a live exchange call."""
     try:
-        import json
-        from pathlib import Path
-        p = Path(__file__).resolve().parents[1] / "data" / f"{symbol.lower()}_carry.json"
-        if p.exists():
-            d = json.loads(p.read_text())
-            d["source"] = "cached (local engine -> /ingest)"
+        from firm import state_store
+        d = state_store.load(f"carry:{symbol.upper()}")
+        if d:
+            d["source"] = "cached (Supabase, via local engine — survives redeploys)"
             return d
     except Exception:  # noqa: BLE001
         pass

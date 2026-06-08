@@ -24,16 +24,21 @@ COOLDOWN_H = 48          # after a net-loss round, wait this long before explori
 DESKS = ("Smart-Money Flow", "On-chain/Risk", "flow-intel", "whale")
 
 
+_DEFAULT = {"mode": "idle", "trials": [], "failed_conditions": [], "rounds": 0, "cooldown_until": 0}
+
+
 def _load() -> dict:
     try:
-        return json.loads(STATE.read_text())
+        from firm import state_store
+        return state_store.load("exploration", dict(_DEFAULT)) or dict(_DEFAULT)
     except Exception:  # noqa: BLE001
-        return {"mode": "idle", "trials": [], "failed_conditions": [], "rounds": 0, "cooldown_until": 0}
+        return dict(_DEFAULT)
 
 
 def _save(s: dict) -> None:
     try:
-        STATE.write_text(json.dumps(s, indent=2))
+        from firm import state_store
+        state_store.save("exploration", s)
     except Exception:  # noqa: BLE001
         pass
 

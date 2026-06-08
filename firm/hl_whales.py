@@ -36,22 +36,17 @@ def _window_pnl(row: dict, window: str) -> float:
 
 def top_addresses(n: int = DEFAULT_N, window: str = "month") -> list[str]:
     """Cached top-N HL trader addresses ranked by `window` PnL. Refreshes the leaderboard every REFRESH_H."""
-    try:
-        c = json.loads(CACHE.read_text())
-        if c.get("window") == window and (time.time() - c.get("epoch", 0)) < REFRESH_H * 3600 and c.get("addrs"):
-            return c["addrs"][:n]
-    except Exception:  # noqa: BLE001
-        pass
+    from firm import state_store
+    c = state_store.load("hl_whales", {}) or {}   # cache in Supabase -> survives redeploys; cloud skips the 32MB fetch
+    if c.get("window") == window and (time.time() - c.get("epoch", 0)) < REFRESH_H * 3600 and c.get("addrs"):
+        return c["addrs"][:n]
     try:
         rows = requests.get(LEADERBOARD, timeout=90).json().get("leaderboardRows", [])
     except Exception:  # noqa: BLE001
-        return []
+        return (c.get("addrs") or [])[:n]   # fetch failed (slow cloud) -> fall back to stale cache
     ranked = sorted(rows, key=lambda r: _window_pnl(r, window), reverse=True)
     addrs = [r["ethAddress"] for r in ranked[:max(n, DEFAULT_N) * 2]]  # cache a bit extra
-    try:
-        CACHE.write_text(json.dumps({"epoch": time.time(), "window": window, "addrs": addrs}))
-    except Exception:  # noqa: BLE001
-        pass
+    state_store.save("hl_whales", {"epoch": time.time(), "window": window, "addrs": addrs})
     return addrs[:n]
 
 
