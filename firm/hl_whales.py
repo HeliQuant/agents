@@ -55,12 +55,25 @@ def top_addresses(n: int = DEFAULT_N, window: str = "month") -> list[str]:
     return addrs[:n]
 
 
-def _position(addr: str, asset: str) -> dict | None:
-    """That address's live position in `asset` on HL (None if flat)."""
+_CS_CACHE: dict[str, tuple[float, dict]] = {}   # addr -> (epoch, clearinghouseState); reused across assets
+_CS_TTL = 300                                    # 5-min cache -> whale_read(BTC) reuses whale_read(MNT)'s fetches
+
+
+def _clearinghouse(addr: str) -> dict:
+    now = time.time()
+    if addr in _CS_CACHE and now - _CS_CACHE[addr][0] < _CS_TTL:
+        return _CS_CACHE[addr][1]
     try:
         cs = requests.post(INFO, json={"type": "clearinghouseState", "user": addr}, timeout=12).json()
     except Exception:  # noqa: BLE001
-        return None
+        cs = {}
+    _CS_CACHE[addr] = (now, cs)
+    return cs
+
+
+def _position(addr: str, asset: str) -> dict | None:
+    """That address's live position in `asset` on HL (None if flat). Uses the per-cycle clearinghouse cache."""
+    cs = _clearinghouse(addr)
     for ap in cs.get("assetPositions", []):
         p = ap.get("position", {})
         if p.get("coin") == asset.upper():

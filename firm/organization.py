@@ -751,7 +751,7 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
         _w, _eff_brief = _ae.efficiency_tilt(ticker, _w)    # tilt toward FLOW desks if asset can't be predicted
         _dw_brief = _dp.weights_brief(_w)
         if _eff_brief:
-            _dw_brief = (_dw_brief + " " + _eff_brief).strip()
+            _dw_brief = (_eff_brief + "  ||  reliability: " + _dw_brief).strip()  # tilt FIRST (visible + key)
     except Exception:  # noqa: BLE001 — desk-learning is optional; never let it break the org
         _dw_brief = ""
     _fi_stance = _whale_stance = ""   # captured below; feed the exploration hypothesis
@@ -786,7 +786,7 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
     if _whale_stance:
         analysts["whale"] = {"stance": _whale_stance, "confidence": "live", "reasoning": _whale_brief[:150]}
     if verbose and _dw_brief:
-        print(f"   ▸ desk-weights prior (efficiency-aware): {_dw_brief[:240]}")
+        print(f"   ▸ {_dw_brief[:340]}")
     if verbose and _carry_brief:
         print(f"   ▸ {_carry_brief[:180]}")
     if verbose and _flow_brief:
