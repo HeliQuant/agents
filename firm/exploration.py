@@ -70,8 +70,8 @@ def propose_trial(asset: str, flow_reads: dict) -> dict | None:
         return None  # learned: this flow-consensus has no edge -> don't repeat ("why I was wrong")
     bull = sum(1 for d in DESKS if any(k in str(flow_reads.get(d, "")).lower() for k in ("bull", "long", "accum")))
     bear = sum(1 for d in DESKS if any(k in str(flow_reads.get(d, "")).lower() for k in ("bear", "short", "distrib")))
-    if bull == bear:
-        return None  # no flow consensus -> not even worth a paper trial
+    if abs(bull - bear) < 2:
+        return None  # require a STRONG consensus (net >=2 of the flow desks agree) — fewer, higher-conviction
     direction = "LONG" if bull > bear else "SHORT"
     return {"asset": asset.upper(), "direction": direction, "condition": cond,
             "hypothesis": f"flow desks lean {direction.lower()} ({bull}-{bear} of {len(DESKS)})"}
