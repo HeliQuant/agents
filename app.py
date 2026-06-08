@@ -228,6 +228,23 @@ def decisions():
     return JSONResponse(list(STATE["decisions"]))
 
 
+@app.get("/carry")
+def carry():
+    """Current carry desk reads — delta-neutral funding carry per symbol, from the locally-pushed cache
+    (Bybit is geo-blocked from Railway; scripts/88 feeds this). Shows the desk IS alive in the cloud."""
+    try:
+        from firm.carry_signal import carry_brief, live_carry
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)[:120]}, status_code=500)
+    out = {}
+    for s in ("HYPEUSDT", "SUIUSDT", "MNTUSDT", "BTCUSDT", "ETHUSDT"):
+        c = live_carry(s)
+        out[s] = ({"carry_ann_pct": c.get("carry_ann_pct"), "crash_class": c.get("crash_class"),
+                   "verdict": c.get("verdict"), "source": c.get("source", "live")} if c else None)
+    return JSONResponse({"carry": out,
+                         "best_harvestable": carry_brief() or "none harvestable now (all thin/lumpy — honest skip)"})
+
+
 @app.get("/probe")
 def probe():
     """Test which exchange/data hosts are reachable FROM RAILWAY's IP (answers: can HeliQuant fetch Bybit here?)."""
