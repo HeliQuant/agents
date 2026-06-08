@@ -61,6 +61,23 @@ def _fetch_funding(symbol: str, days: int) -> list[float]:
     return [rows[t] for t in sorted(rows) if t >= start]
 
 
+def _read_cached_carry(symbol: str) -> dict | None:
+    """Cloud fallback: Bybit is geo-blocked from Railway, so the LOCAL engine (where Bybit is reachable)
+    computes the carry and pushes the result via /ingest -> data/{symbol}_carry.json. Read that here when
+    we can't reach Bybit ourselves. Keeps the carry desk alive in the cloud without a live exchange call."""
+    try:
+        import json
+        from pathlib import Path
+        p = Path(__file__).resolve().parents[1] / "data" / f"{symbol.lower()}_carry.json"
+        if p.exists():
+            d = json.loads(p.read_text())
+            d["source"] = "cached (local engine -> /ingest)"
+            return d
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def live_carry(symbol: str, lookback_days: int = 60, rf_pct: float = RISK_FREE_PCT) -> dict | None:
     """Current carry attractiveness for `symbol` from trailing funding. Returns None if no data.
 
@@ -68,7 +85,7 @@ def live_carry(symbol: str, lookback_days: int = 60, rf_pct: float = RISK_FREE_P
     negligible amortized over a multi-week hold — see STRATEGY_CARRY §4 on why churning kills it)."""
     f = _fetch_funding(symbol, lookback_days)
     if len(f) < 20:
-        return None
+        return _read_cached_carry(symbol)  # Bybit unreachable (e.g. cloud) -> use the locally-pushed result
     n, span = len(f), lookback_days
     gross_ann = sum(f) * 365 / span * 100
     pos_pct = 100 * sum(1 for x in f if x > 0) / n

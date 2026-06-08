@@ -269,9 +269,22 @@ async def ingest(req: Request):
     except Exception:  # noqa: BLE001
         return JSONResponse({"error": "bad json"}, status_code=400)
     asset = str(body.get("asset", "")).upper()
+    if not asset:
+        return JSONResponse({"error": "need asset"}, status_code=400)
+    # CARRY payload: the local engine (Bybit-reachable) computed the carry and pushes the result so the
+    # cloud carry desk works without a live exchange call (Bybit is geo-blocked from Railway).
+    carry = body.get("carry")
+    if isinstance(carry, dict):
+        try:
+            (DATA / f"{asset.lower()}_carry.json").write_text(json.dumps(carry), encoding="utf-8")
+        except Exception as e:  # noqa: BLE001
+            return JSONResponse({"error": f"carry write failed: {str(e)[:80]}"}, status_code=500)
+        log(f"[ingest] received {asset} carry: {carry.get('carry_ann_pct')}%/yr ({str(carry.get('verdict',''))[:40]})")
+        return JSONResponse({"ok": True, "asset": asset, "carry_ann_pct": carry.get("carry_ann_pct")})
+    # POSITIONING csv payload (default)
     csv_text = body.get("csv")
-    if not asset or not isinstance(csv_text, str) or len(csv_text) < 50:
-        return JSONResponse({"error": "need asset + csv (full positioning text)"}, status_code=400)
+    if not isinstance(csv_text, str) or len(csv_text) < 50:
+        return JSONResponse({"error": "need asset + csv (positioning) OR carry (dict)"}, status_code=400)
     try:
         (DATA / f"{asset.lower()}_positioning.csv").write_text(csv_text, encoding="utf-8")
     except Exception as e:  # noqa: BLE001
