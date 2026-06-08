@@ -736,6 +736,7 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
             _dw_brief = (_dw_brief + " " + _eff_brief).strip()
     except Exception:  # noqa: BLE001 — desk-learning is optional; never let it break the org
         _dw_brief = ""
+    _fi_stance = _whale_stance = ""   # captured below; feed the exploration hypothesis
     # ADDITIVE carry desk: market-neutral yield advisory (empty if nothing harvestable -> org unchanged).
     try:
         from firm.carry_signal import carry_brief as _cb
@@ -746,6 +747,7 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
     try:
         from firm.flow_intel import synthesize as _fsyn
         _fi = _fsyn(ticker)
+        _fi_stance = _fi.get("stance", "")
         _flow_brief = (f"FLOW-INTEL DESK (self-learning flow signals — {_fi['reliable_signals']}/4 validate OOS): "
                        f"{_fi['stance']}. {_fi['note'][:150]} Advisory, non-directional.")
     except Exception:  # noqa: BLE001 — flow-intel is optional; never let it break the org
@@ -754,7 +756,9 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
     # (net long/short + their PnL). Cloud-native (HL reachable from Railway). Empty if asset not on HL.
     try:
         from firm.hl_whales import whale_read as _wr
-        _whale_brief = _wr(ticker).get("brief", "")
+        _wr_res = _wr(ticker)
+        _whale_brief = _wr_res.get("brief", "")
+        _whale_stance = _wr_res.get("stance", "")
     except Exception:  # noqa: BLE001 — whale desk is optional + network-bound; never let it break the org
         _whale_brief = ""
     if verbose and _dw_brief:
@@ -769,6 +773,30 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
                       memory_brief=memory_brief, desk_weights_brief=_dw_brief, carry_brief=_carry_brief,
                       flow_brief=_flow_brief, whale_brief=_whale_brief)
     decision = finalize_decision(ticker, decision, desks, desks[0][1], analysts, debate, verbose=verbose)
+    # EXPLORATION ("coba-coba"): when the firm ABSTAINS, PAPER-hunt an edge from the flow-desk consensus
+    # (Smart-Money + On-chain + flow-intel + whale). Zero real money; resolved on the 24h move; learns which
+    # conditions fail (never repeats them) and surfaces a CANDIDATE if a consensus pays. Additive + safe.
+    try:
+        from pathlib import Path as _P
+        import pandas as _pd
+        from firm import exploration as _expl
+        _fp = _P(__file__).resolve().parents[1] / "data" / f"{ticker.lower()}_positioning.csv"
+        _px = float(_pd.read_csv(_fp)["close"].iloc[-1]) if _fp.exists() else None
+        if _px:
+            _ev = _expl.resolve_and_learn({ticker: _px})
+            if verbose and _ev.get("learned"):
+                print(f"   🧪 EXPLORATION learned: {_ev['result']} (net {_ev['net_pct']}%) — {_ev['lesson']}")
+            if str(decision.get("decision", "")).upper() == "ABSTAIN":
+                _reads = {"Smart-Money Flow": (analysts.get("Smart-Money Flow") or {}).get("stance", ""),
+                          "On-chain/Risk": (analysts.get("On-chain/Risk") or {}).get("stance", ""),
+                          "flow-intel": _fi_stance, "whale": _whale_stance}
+                _t = _expl.propose_trial(ticker, _reads)
+                if _t:
+                    _expl.record_trial(ticker, _t["direction"], _t["condition"], _px, _t["hypothesis"])
+                    if verbose:
+                        print(f"   🧪 EXPLORATION paper-trial: {_t['direction']} {ticker} @ {_px} — {_t['hypothesis']}")
+    except Exception:  # noqa: BLE001 — exploration is additive; never break the org
+        pass
     if verbose:
         print("\n" + "=" * 74)
     return {
