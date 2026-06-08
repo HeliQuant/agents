@@ -513,9 +513,23 @@ def run_debate(desks: list, analysts: dict, verbose: bool = True) -> dict:
     return {"bull": bull, "bear": bear, "bull_rebuttal": bull_r, "bear_rebuttal": bear_r}
 
 
+def _ranked_desk_view(analysts: dict, weights: dict) -> str:
+    """Present the desks RANKED by learned reliability + tagged TRUSTED/discount, so the PM weights the
+    proven desks heavily and isn't swayed by an unreliable one — fights the 'too many desks = noise' overload."""
+    items = sorted(analysts.items(), key=lambda kv: weights.get(kv[0], 1.0), reverse=True)
+    out = []
+    for name, v in items:
+        w = weights.get(name, 1.0)
+        tag = "TRUSTED" if w >= 1.1 else "DISCOUNT" if w <= 0.9 else "neutral"
+        v = v or {}
+        reason = str(v.get("reasoning") or v.get("read") or v.get("note") or v.get("rationale") or "")[:150]
+        out.append(f"  [{w:.2f}x {tag}] {name}: {v.get('stance', '?')} ({v.get('confidence', '')}) — {reason}")
+    return "\n".join(out)
+
+
 def run_pm(ticker: str, reg: dict, analysts: dict, debate: dict, verbose: bool = True,
            extra: str = "", memory_brief: str = "", desk_weights_brief: str = "", carry_brief: str = "",
-           flow_brief: str = "", whale_brief: str = "") -> dict:
+           flow_brief: str = "", whale_brief: str = "", desk_weights: dict | None = None) -> dict:
     """PHASE 2 — portfolio manager synthesizes all desks into a final decision.
     `extra` carries a risk-gate repair note; `memory_brief` carries recall of past resolved trades
     (the learning-loop); `desk_weights_brief` is an ADVISORY desk-reliability prior (additive — empty
@@ -539,7 +553,10 @@ def run_pm(ticker: str, reg: dict, analysts: dict, debate: dict, verbose: bool =
             "regime_classifier_oos_accuracy": reg.get("regime_classifier_oos_accuracy"),
             "status": reg.get("status"),
         }, indent=2)
-        + "\n\nDesk views (all 7):\n" + json.dumps(analysts, indent=2)
+        + ("\n\nDesk views — RANKED by learned reliability for THIS asset (weight TRUSTED desks heavily; "
+           "treat DISCOUNT desks as weak priors — don't let a noisy desk sway you):\n"
+           + _ranked_desk_view(analysts, desk_weights) if desk_weights
+           else "\n\nDesk views (all 7):\n" + json.dumps(analysts, indent=2))
         + "\n\nBull-vs-Bear debate:\n" + json.dumps(debate, indent=2)
         + (("\n\n" + extra) if extra else "")
         + "\n\nMake the final, most rational decision."
@@ -726,6 +743,7 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
     analysts = run_analysts(desks, verbose=verbose)
     debate = run_debate(desks, analysts, verbose=verbose)
     # ADDITIVE self-learning: advisory desk-reliability prior (empty if none learned -> org unchanged).
+    _w = {}                                                 # tilted desk weights -> ranked desk view for the PM
     try:
         from firm import asset_efficiency as _ae
         from firm import desk_performance as _dp
@@ -761,6 +779,12 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
         _whale_stance = _wr_res.get("stance", "")
     except Exception:  # noqa: BLE001 — whale desk is optional + network-bound; never let it break the org
         _whale_brief = ""
+    # fold the NEW directional desks (flow-intel + whale) into the desk set so they're RANKED + weighted
+    # ALONGSIDE the 7 LLM desks (carry = market-neutral + exploration = meta -> stay separate).
+    if _fi_stance:
+        analysts["flow-intel"] = {"stance": _fi_stance, "confidence": "learned", "reasoning": _flow_brief[:150]}
+    if _whale_stance:
+        analysts["whale"] = {"stance": _whale_stance, "confidence": "live", "reasoning": _whale_brief[:150]}
     if verbose and _dw_brief:
         print(f"   ▸ desk-weights prior (efficiency-aware): {_dw_brief[:240]}")
     if verbose and _carry_brief:
@@ -771,7 +795,7 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
         print(f"   ▸ {_whale_brief[:220]}")
     decision = run_pm(ticker, desks[0][1], analysts, debate, verbose=verbose,
                       memory_brief=memory_brief, desk_weights_brief=_dw_brief, carry_brief=_carry_brief,
-                      flow_brief=_flow_brief, whale_brief=_whale_brief)
+                      flow_brief=_flow_brief, whale_brief=_whale_brief, desk_weights=_w)
     decision = finalize_decision(ticker, decision, desks, desks[0][1], analysts, debate, verbose=verbose)
     # EXPLORATION ("coba-coba"): when the firm ABSTAINS, PAPER-hunt an edge from the flow-desk consensus
     # (Smart-Money + On-chain + flow-intel + whale). Zero real money; resolved on the 24h move; learns which

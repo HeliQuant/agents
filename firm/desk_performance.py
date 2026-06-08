@@ -31,7 +31,8 @@ WEIGHTS = ROOT / "data" / "desk_weights.json"        # computed current state (s
 SB_TABLE = "desk_outcomes_hq"                         # Supabase table (cloud mirror, FE-readable)
 
 DESKS = ["Regime/Technical", "Macro (Allora)", "On-chain/Risk", "Research",
-         "Smart-Money Flow", "Smart-Social", "OI-Contrarian"]
+         "Smart-Money Flow", "Smart-Social", "OI-Contrarian",
+         "flow-intel", "whale"]   # NEW directional desks — earn reliability weights alongside the 7
 LO, HI = 0.6, 1.4      # weight bounds — never mute a desk
 NEUTRAL = 1.0
 MIN_SAMPLES = 15       # need >= 15 resolved samples before a desk's weight moves off neutral
