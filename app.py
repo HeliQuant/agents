@@ -178,8 +178,23 @@ def _loop() -> None:
 app = FastAPI(title="HeliQuant")
 
 
+def _restore_positioning() -> None:
+    """On boot, pull the latest positioning CSVs from Supabase (ephemeral FS loses the /ingest-fed ones on
+    redeploy). Keeps the cloud on fresh data across redeploys — no manual re-feed needed."""
+    try:
+        from firm import state_store
+        for a in ASSETS:
+            csv = state_store.load(f"pos:{a.lower()}")
+            if isinstance(csv, str) and len(csv) > 50:
+                (DATA / f"{a.lower()}_positioning.csv").write_text(csv, encoding="utf-8")
+                log(f"[restore] positioning {a} from Supabase ({csv.count(chr(10))} rows)")
+    except Exception as e:  # noqa: BLE001
+        log(f"[restore] skipped: {str(e)[:80]}")
+
+
 @app.on_event("startup")
 def _start():
+    _restore_positioning()   # restore positioning from Supabase before the loop runs
     threading.Thread(target=_loop, daemon=True).start()
 
 
@@ -307,6 +322,8 @@ async def ingest(req: Request):
         return JSONResponse({"error": "need asset + csv (positioning) OR carry (dict)"}, status_code=400)
     try:
         (DATA / f"{asset.lower()}_positioning.csv").write_text(csv_text, encoding="utf-8")
+        from firm import state_store
+        state_store.save(f"pos:{asset.lower()}", csv_text)   # persist -> survives redeploys (restored on boot)
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"error": f"write failed: {str(e)[:80]}"}, status_code=500)
     rows = csv_text.count("\n")
