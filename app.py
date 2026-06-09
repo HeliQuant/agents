@@ -123,9 +123,11 @@ def cycle() -> None:
     except Exception as e:  # noqa: BLE001
         log(f"  [self-learn] error: {str(e)[:120]}")
 
-    # 2) org analysis + firm-governed (gated) execution per asset
+    # 2) org analysis — ROTATE one asset per cycle (cuts LLM calls/cycle ~in half -> avoids Groq 429
+    #    daily-quota burn; each asset still re-analyzed every len(ASSETS) cycles, fine for a 24h horizon).
     from firm.organization import run_organization
-    for asset in ASSETS:
+    rotated = [ASSETS[STATE["cycles"] % len(ASSETS)]] if ASSETS else []
+    for asset in rotated:
         _refresh(asset)
         log(f"-- ORG analysis: {asset} --")
         try:
