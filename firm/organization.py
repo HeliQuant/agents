@@ -529,7 +529,8 @@ def _ranked_desk_view(analysts: dict, weights: dict) -> str:
 
 def run_pm(ticker: str, reg: dict, analysts: dict, debate: dict, verbose: bool = True,
            extra: str = "", memory_brief: str = "", desk_weights_brief: str = "", carry_brief: str = "",
-           flow_brief: str = "", whale_brief: str = "", desk_weights: dict | None = None) -> dict:
+           flow_brief: str = "", whale_brief: str = "", mantle_brief: str = "",
+           desk_weights: dict | None = None) -> dict:
     """PHASE 2 — portfolio manager synthesizes all desks into a final decision.
     `extra` carries a risk-gate repair note; `memory_brief` carries recall of past resolved trades
     (the learning-loop); `desk_weights_brief` is an ADVISORY desk-reliability prior (additive — empty
@@ -545,6 +546,7 @@ def run_pm(ticker: str, reg: dict, analysts: dict, debate: dict, verbose: bool =
         + ((carry_brief + "\n\n") if carry_brief else "")
         + ((flow_brief + "\n\n") if flow_brief else "")
         + ((whale_brief + "\n\n") if whale_brief else "")
+        + ((mantle_brief + "\n\n") if mantle_brief else "")
         + "Validated engine status:\n"
         + json.dumps({
             "current_regime": reg.get("current_regime"),
@@ -779,6 +781,15 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
         _whale_stance = _wr_res.get("stance", "")
     except Exception:  # noqa: BLE001 — whale desk is optional + network-bound; never let it break the org
         _whale_brief = ""
+    # ADDITIVE Mantle fundamentals desk (DeFiLlama, keyless): chain TVL trend + protocol fees = ecosystem
+    # risk-on/off (capital flowing into / out of Mantle). Only for Mantle-eco assets. Advisory context.
+    _mantle_brief = ""
+    if ticker.upper() in ("MNT", "METH", "CMETH", "FBTC", "USDE", "USDY", "MANTLE"):
+        try:
+            from firm.defillama_client import mantle_brief as _mb
+            _mantle_brief = _mb()
+        except Exception:  # noqa: BLE001 — optional + network-bound; never let it break the org
+            _mantle_brief = ""
     # fold the NEW directional desks (flow-intel + whale) into the desk set so they're RANKED + weighted
     # ALONGSIDE the 7 LLM desks (carry = market-neutral + exploration = meta -> stay separate).
     if _fi_stance:
@@ -793,9 +804,11 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
         print(f"   ▸ {_flow_brief[:200]}")
     if verbose and _whale_brief:
         print(f"   ▸ {_whale_brief[:220]}")
+    if verbose and _mantle_brief:
+        print(f"   ▸ {_mantle_brief[:240]}")
     decision = run_pm(ticker, desks[0][1], analysts, debate, verbose=verbose,
                       memory_brief=memory_brief, desk_weights_brief=_dw_brief, carry_brief=_carry_brief,
-                      flow_brief=_flow_brief, whale_brief=_whale_brief, desk_weights=_w)
+                      flow_brief=_flow_brief, whale_brief=_whale_brief, mantle_brief=_mantle_brief, desk_weights=_w)
     decision = finalize_decision(ticker, decision, desks, desks[0][1], analysts, debate, verbose=verbose)
     # EXPLORATION ("coba-coba"): when the firm ABSTAINS, PAPER-hunt an edge from the flow-desk consensus
     # (Smart-Money + On-chain + flow-intel + whale). Zero real money; resolved on the 24h move; learns which
