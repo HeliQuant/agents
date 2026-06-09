@@ -38,19 +38,28 @@ def learn_reliable(asset: str) -> dict:
         return out
     df = pd.read_csv(fp)
     close = df["close"].values
+    metrics: dict = {}
     for s in FLOW_SIGNALS:
         try:
             sig = el.SIGNAL_SOURCES[s](df).values
-            m = el.validate_signal(close, sig)
+            metrics[s] = el.validate_signal(close, sig)
         except Exception:  # noqa: BLE001
-            m = None
+            metrics[s] = None
+    # FDR correction (Benjamini-Hochberg) across ALL signals tested here: testing 4 signals at once means
+    # one can look great by luck, so a signal must clear BOTH its own cost-aware OOS gate AND BH — caps the
+    # false-discovery rate, the multiple-testing trap that sinks naive "best-of-N" backtests.
+    fdr = el.benjamini_hochberg({s: m["pval"] for s, m in metrics.items() if m}, alpha=0.10)
+    for s in FLOW_SIGNALS:
+        m = metrics[s]
         if not m:
             out[s] = {"validates": False, "reliability": 0.0, "note": "insufficient data"}
             continue
-        # reliability: only positive, OOS-passing signals earn weight; scaled by net OOS ROI (capped)
-        rel = round(min(1.0, max(0.0, m["oos_roi_pct"] / 30.0)), 2) if m["passed"] else 0.0
-        out[s] = {"validates": bool(m["passed"]), "oos_roi_pct": m["oos_roi_pct"], "trades": m["trades"],
-                  "direction": "contrarian" if m.get("contrarian") else "momentum", "reliability": rel}
+        validates = bool(m["passed"] and fdr.get(s, False))
+        # reliability: only signals surviving OOS + FDR earn weight; scaled by net OOS ROI (capped)
+        rel = round(min(1.0, max(0.0, m["oos_roi_pct"] / 30.0)), 2) if validates else 0.0
+        out[s] = {"validates": validates, "oos_roi_pct": m["oos_roi_pct"], "trades": m["trades"],
+                  "direction": "contrarian" if m.get("contrarian") else "momentum", "reliability": rel,
+                  "pval": m.get("pval"), "fdr_pass": bool(fdr.get(s, False))}
     return out
 
 
