@@ -49,6 +49,38 @@ def edge_name(source: str, contrarian: bool) -> str:
     }.get((source, contrarian), f"{source}_{'contrarian' if contrarian else 'momentum'}")
 
 
+def _norm_cdf(z: float) -> float:
+    import math
+    return 0.5 * (1 + math.erf(z / math.sqrt(2)))
+
+
+def pval_mean_positive(rets) -> float:
+    """One-sided p-value that mean(rets) > 0 (t-stat, normal approx — no scipy). Lower = more significant."""
+    r = np.asarray(rets, dtype=float)
+    n = len(r)
+    sd = r.std(ddof=1) if n > 1 else 0.0
+    if n < 2 or sd == 0:
+        return 1.0
+    return float(1.0 - _norm_cdf(r.mean() / (sd / np.sqrt(n))))
+
+
+def benjamini_hochberg(pvals: dict, alpha: float = 0.10) -> dict:
+    """Benjamini-Hochberg FDR control. {name: pval} -> {name: passed_fdr}. Caps the false-discovery rate
+    when MANY signals/assets are tested at once (the 'best-of-N looks great by luck' trap)."""
+    items = sorted(((k, v) for k, v in pvals.items() if v is not None), key=lambda kv: kv[1])
+    m = len(items)
+    passed = {k: False for k in pvals}
+    if m == 0:
+        return passed
+    kmax = 0
+    for i, (_, p) in enumerate(items, start=1):
+        if p <= alpha * i / m:
+            kmax = i
+    for i, (k, _) in enumerate(items, start=1):
+        passed[k] = i <= kmax
+    return passed
+
+
 def validate_signal(close: np.ndarray, sig: np.ndarray) -> dict | None:
     """Honest OOS/cost-aware gate on one signal source. Direction + thresholds from TRAIN only.
     Returns metrics + ``passed``, or None if too little data."""
@@ -87,6 +119,7 @@ def validate_signal(close: np.ndarray, sig: np.ndarray) -> dict | None:
     ls = [r for r in rets if r <= 0]
     payoff = (np.mean(w) / abs(np.mean(ls))) if (w and ls) else 0.0
     avg_bps = float(np.mean(rets) * 1e4)
+    pval = pval_mean_positive(rets)   # one-sided significance of mean net > 0 (for FDR correction across signals)
     rt_fee_bps = 2 * COST * 1e4  # realistic round-trip cost (fee + spread + slippage), not fee-only
     oos_roi = (eq - 1) * 100
     passed = bool(oos_roi > 0 and oos_roi > bh * 100 and avg_bps > rt_fee_bps
@@ -96,7 +129,8 @@ def validate_signal(close: np.ndarray, sig: np.ndarray) -> dict | None:
         "oos_roi_pct": round(oos_roi, 2), "trades": trades,
         "win_pct": round(wins / trades * 100, 1), "p_win": round(wins / trades, 4),
         "payoff_b": round(float(payoff), 3), "avg_bps": round(avg_bps, 1),
-        "buyhold_pct": round(bh * 100, 2), "rt_fee_bps": round(rt_fee_bps, 1), "passed": passed,
+        "buyhold_pct": round(bh * 100, 2), "rt_fee_bps": round(rt_fee_bps, 1),
+        "pval": round(pval, 4), "passed": passed,
     }
 
 
@@ -208,7 +242,13 @@ def onboard(asset: str, data_dir) -> dict:
         m["source"] = src
         m["edge"] = edge_name(src, m["contrarian"])
         results.append(m)
-    passed = [r for r in results if r["passed"]]
+    # FDR (Benjamini-Hochberg) across every signal tested here: crowning the best of N signals is the classic
+    # multiple-testing trap (best-of-N looks great by pure luck). An edge must clear its own cost-aware OOS
+    # gate AND survive FDR before it's eligible for the registry slot — caps the false-discovery rate.
+    fdr = benjamini_hochberg({r["source"]: r["pval"] for r in results}, alpha=0.10)
+    for r in results:
+        r["fdr_pass"] = bool(fdr.get(r["source"], False))
+    passed = [r for r in results if r["passed"] and r["fdr_pass"]]
     best = max(passed, key=lambda r: r["oos_roi_pct"]) if passed else None
     if best:
         best["wf"] = walk_forward(close, SIGNAL_SOURCES[best["source"]](df).values)
