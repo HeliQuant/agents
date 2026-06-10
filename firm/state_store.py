@@ -63,15 +63,19 @@ def load(key: str, default=None):
     return default
 
 
+LAST_SAVE_ERR: dict[str, str] = {}  # key -> last Supabase write error (diagnostic; empty = clean)
+
+
 def save(key: str, value) -> str:
     """Upsert a value by key — Supabase (persistent) if keyed, else local JSON. Returns the backend used."""
     sb = _client()
     if sb:
         try:
             sb.table(TABLE).upsert({"key": key, "value": value}).execute()
+            LAST_SAVE_ERR.pop(key, None)
             return "supabase"
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            LAST_SAVE_ERR[key] = str(e)[:160]  # record WHY (e.g. RLS denial) instead of silent fallback
     try:
         LOCAL.mkdir(parents=True, exist_ok=True)
         (LOCAL / f"{key.replace(':', '_')}.json").write_text(json.dumps(value))

@@ -64,10 +64,13 @@ def _load() -> tuple[dict, list]:
     return s, pos
 
 
-def _save(s: dict, pos: list) -> None:
+def _save(s: dict, pos: list, log=None) -> None:
     from firm import state_store
-    state_store.save("campaign_state", s)
-    state_store.save("campaign_pos", pos)
+    b1 = state_store.save("campaign_state", s)
+    b2 = state_store.save("campaign_pos", pos)
+    if log and (b2 != "supabase" or state_store.LAST_SAVE_ERR.get("campaign_pos")):
+        err = state_store.LAST_SAVE_ERR.get("campaign_pos", "")
+        log(f"  ⚠ campaign_pos -> {b2} (NOT persisted across redeploys){' · ' + err if err else ''}")
 
 
 def live_prices() -> dict:
@@ -391,7 +394,14 @@ def step(log=print) -> dict:
         s["done"] = True
         wr = (s["wins"] / s["closed"] * 100) if s["closed"] else 0.0
         log(f"  🏁 CAMPAIGN COMPLETE: {s['opened']} opened · win {wr:.1f}% · net ${s['net_usd']:+.2f}")
-    _save(s, pos)
+    _save(s, pos, log)
+    try:  # readback verify — proves sl/tp actually persisted (diagnoses the not-showing issue)
+        from firm import state_store
+        chk = state_store.load("campaign_pos", [])
+        n = sum(1 for p in chk if isinstance(p, dict) and p.get("sl") is not None)
+        log(f"  [campaign] persist check: {len(chk)} pos in store · {n} carry sl/tp")
+    except Exception as e:  # noqa: BLE001
+        log(f"  [campaign] persist check failed: {str(e)[:70]}")
     return {**s, "open_now": open_now}
 
 
