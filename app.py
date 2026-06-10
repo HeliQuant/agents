@@ -167,11 +167,35 @@ def _do_cycle() -> bool:
     return True
 
 
+_campaign_last = 0.0
+CAMPAIGN_STEP_MIN = int(os.environ.get("CAMPAIGN_STEP_MIN", "15"))
+CAMPAIGN_ON = os.environ.get("CAMPAIGN", "1") == "1"
+
+
+def _campaign_step() -> None:
+    """THE LIVE CAMPAIGN (user mandate): open 100 desk-justified PAPER positions at live prices.
+    Cheap (no LLM) and independent of the org-cycle gap — runs every CAMPAIGN_STEP_MIN. Real capital
+    still requires a validated edge; this is the exploration floor at full hunt. firm/campaign.py."""
+    global _campaign_last
+    if not CAMPAIGN_ON or time.time() - _campaign_last < CAMPAIGN_STEP_MIN * 60:
+        return
+    _campaign_last = time.time()
+    try:
+        from firm.campaign import step
+        st = step(log=log)
+        log(f"[campaign] opened {st.get('opened')}/100 · open {st.get('open_now')} · closed {st.get('closed')} "
+            f"· net ${st.get('net_usd'):+.2f}")
+    except Exception as e:  # noqa: BLE001
+        log(f"[campaign] step error: {str(e)[:120]}")
+
+
 def _loop() -> None:
-    log(f"HeliQuant loop starting: assets={ASSETS} interval={INTERVAL_MIN}min execute={EXECUTE}")
+    log(f"HeliQuant loop starting: assets={ASSETS} interval={INTERVAL_MIN}min execute={EXECUTE} "
+        f"campaign={'ON' if CAMPAIGN_ON else 'off'}")
     while True:
         if time.time() - STATE["last_cycle_epoch"] >= MIN_CYCLE_GAP_S:
             _do_cycle()
+        _campaign_step()
         time.sleep(60)  # wake every minute; the gap guard + external /run-cycle decide when a cycle fires
 
 
@@ -243,6 +267,18 @@ def status():
 @app.get("/decisions")
 def decisions():
     return JSONResponse(list(STATE["decisions"]))
+
+
+@app.get("/campaign")
+def campaign_status():
+    """THE LIVE CAMPAIGN progress — 100 desk-justified paper positions at live prices. Each open
+    position carries the desk votes that justified it (auditable bravery; PM real-capital gate
+    untouched). Watch it fill: opened/closed/win%/net + the live book."""
+    try:
+        from firm.campaign import status
+        return JSONResponse(status())
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)[:120]}, status_code=500)
 
 
 @app.get("/carry")
