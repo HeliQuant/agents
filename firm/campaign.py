@@ -22,6 +22,7 @@ State persists in Supabase ("campaign" + "campaign_pos") -> survives redeploys, 
 """
 from __future__ import annotations
 
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +31,7 @@ import pandas as pd
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
+BYBIT = "https://api.bybit.com"
 
 BASKET = ["MNT", "BTC", "ETH", "SOL", "HYPE", "SUI"]
 TARGET = 100
@@ -66,12 +68,24 @@ def _save(s: dict, pos: list) -> None:
 
 
 def live_prices() -> dict:
-    """One batched call for the whole basket. DeFiLlama first (generous, keyless), CoinGecko fallback."""
+    """Live marks for the basket. Bybit perp tickers FIRST (the venue's own price — reachable from
+    Railway's Amsterdam region), DeFiLlama batch fallback, CoinGecko last."""
+    out: dict = {}
+    for a in _GECKO_IDS:
+        try:
+            r = requests.get(f"{BYBIT}/v5/market/tickers",
+                             params={"category": "linear", "symbol": f"{a}USDT"}, timeout=10).json()
+            out[a] = float(r["result"]["list"][0]["lastPrice"])
+        except Exception:  # noqa: BLE001
+            out[a] = None
+    if all(v for v in out.values()):
+        return out
     ids = ",".join(f"coingecko:{g}" for g in _GECKO_IDS.values())
     try:
         r = requests.get(f"https://coins.llama.fi/prices/current/{ids}", timeout=15).json()
         coins = r.get("coins", {})
-        out = {a: coins.get(f"coingecko:{g}", {}).get("price") for a, g in _GECKO_IDS.items()}
+        for a, g in _GECKO_IDS.items():
+            out[a] = out.get(a) or coins.get(f"coingecko:{g}", {}).get("price")
         if any(v for v in out.values()):
             return out
     except Exception:  # noqa: BLE001
@@ -80,9 +94,107 @@ def live_prices() -> dict:
         r = requests.get("https://api.coingecko.com/api/v3/simple/price",
                          params={"ids": ",".join(_GECKO_IDS.values()), "vs_currencies": "usd"},
                          timeout=15).json()
-        return {a: (r.get(g) or {}).get("usd") for a, g in _GECKO_IDS.items()}
+        for a, g in _GECKO_IDS.items():
+            out[a] = out.get(a) or (r.get(g) or {}).get("usd")
     except Exception:  # noqa: BLE001
-        return {}
+        pass
+    return out
+
+
+def _refresh_if_stale(asset: str, max_age_h: float = 2.0, log=print) -> None:
+    """Self-collect fresh positioning data when stale — Bybit is reachable from Amsterdam, so the
+    campaign feeds ITSELF (no local feeder dependency)."""
+    if _data_age_h(asset) <= max_age_h:
+        return
+    try:
+        from importlib import import_module
+        import sys
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        import_module("scripts.73_collect_alt").collect(asset.upper())
+        log(f"  [campaign] self-refreshed {asset} positioning data")
+    except Exception as e:  # noqa: BLE001
+        log(f"  [campaign] {asset} self-refresh failed ({str(e)[:60]})")
+
+
+# ── TESTNET execution rail (the "live trade" layer) ──────────────────────────────────────────────
+# HARD CONSTITUTION GATE: the campaign may only ever touch TESTNET money. Real capital requires a
+# validated edge through the PM — that gate lives elsewhere and is untouched. Enable with
+# CAMPAIGN_EXECUTE=1 + Bybit TESTNET keys in env. LONG-only (spot can't short); paper ledger stays
+# the source of truth for PnL — testnet fills are the proof of execution, not the accounting.
+
+def _exec_mod():
+    if os.environ.get("CAMPAIGN_EXECUTE", "0").strip() not in {"1", "true", "yes"}:
+        return None
+    try:
+        from firm import bybit_executor as ex
+        if not ex.is_testnet():
+            return None  # NEVER real money from the campaign — testnet or nothing
+        return ex
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _spot_step(symbol: str) -> float | None:
+    try:
+        r = requests.get("https://api-testnet.bybit.com/v5/market/instruments-info",
+                         params={"category": "spot", "symbol": symbol}, timeout=10).json()
+        return float(r["result"]["list"][0]["lotSizeFilter"]["basePrecision"])
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _exec_open(p: dict, log=print) -> None:
+    """LONG open -> real market BUY on Bybit TESTNET spot (proven rail: 100/100 fills)."""
+    ex = _exec_mod()
+    if not ex or p["dir"] != "LONG":
+        return
+    sym = f"{p['asset']}USDT"
+    try:
+        s = ex._trade_session()
+        base_coin = p["asset"]
+        bal0 = _wallet_coin(ex, base_coin)
+        ex._ok(s.place_order(category="spot", symbol=sym, side="Buy", orderType="Market",
+                             qty=str(p["size_usd"]), marketUnit="quoteCoin"))
+        time.sleep(0.8)
+        qty = max(0.0, _wallet_coin(ex, base_coin) - bal0)
+        if qty > 0:
+            p["exec_qty"] = qty
+            p["venue"] = "bybit-testnet-spot"
+            log(f"  ⚡ EXECUTED #{p['id']} BUY {qty} {base_coin} on Bybit TESTNET (real fill, fake money)")
+    except Exception as e:  # noqa: BLE001
+        log(f"  [exec] #{p['id']} {sym} buy skipped ({str(e)[:60]}) — paper only")
+
+
+def _exec_close(p: dict, log=print) -> None:
+    ex = _exec_mod()
+    if not ex or not p.get("exec_qty"):
+        return
+    sym = f"{p['asset']}USDT"
+    try:
+        s = ex._trade_session()
+        step_sz = _spot_step(sym) or 0.0001
+        qty = int(p["exec_qty"] / step_sz) * step_sz
+        if qty <= 0:
+            return
+        ex._ok(s.place_order(category="spot", symbol=sym, side="Sell", orderType="Market",
+                             qty=str(round(qty, 8))))
+        p["exec_closed"] = True
+        log(f"  ⚡ EXECUTED #{p['id']} SELL {qty} {p['asset']} on Bybit TESTNET (position closed on venue)")
+    except Exception as e:  # noqa: BLE001
+        log(f"  [exec] #{p['id']} {sym} sell failed ({str(e)[:60]}) — paper close stands")
+
+
+def _wallet_coin(ex, coin: str) -> float:
+    try:
+        res = ex._ok(ex._read_session().get_wallet_balance(accountType="UNIFIED"))
+        for a in res.get("list", []):
+            for c in a.get("coin", []):
+                if c.get("coin") == coin:
+                    return float(c.get("walletBalance") or 0)
+    except Exception:  # noqa: BLE001
+        pass
+    return 0.0
 
 
 def _data_age_h(asset: str) -> float:
@@ -167,6 +279,7 @@ def step(log=print) -> dict:
             s["wins"] += 1
         log(f"  {'🟩' if pnl > 0 else '🟥'} CAMPAIGN CLOSE #{p['id']} {p['dir']} {p['asset']} "
             f"{p['net_pct']:+.2f}% (${pnl:+.2f}) | total ${s['net_usd']:+.2f}")
+        _exec_close(p, log)
         r = s["rounds"].setdefault(p["asset"], {"closed": 0, "pnl": 0.0, "conds": []})
         r["closed"] += 1
         r["pnl"] = round(r["pnl"] + pnl, 4)
@@ -188,6 +301,7 @@ def step(log=print) -> dict:
             continue
         if len([p for p in pos if p["asset"] == a and p.get("exit") is None]) >= SLOTS_PER_ASSET:
             continue
+        _refresh_if_stale(a, log=log)  # Amsterdam: Bybit reachable -> the campaign feeds itself
         net, reasons = desk_votes(a)
         if net == 0 or not reasons:
             continue  # desks flat -> no coin-flips, even on paper
@@ -206,6 +320,7 @@ def step(log=print) -> dict:
         pos.append(p)
         s["opened"] += 1
         log(f"  🟢 CAMPAIGN OPEN #{p['id']} {direction} {a} @ {px} {tier} (net {net:+}) — {'; '.join(reasons[:3])}")
+        _exec_open(p, log)  # LONGs become REAL Bybit TESTNET spot fills when CAMPAIGN_EXECUTE=1
 
     open_now = len([p for p in pos if p.get("exit") is None])
     if s["opened"] >= TARGET and open_now == 0:
@@ -223,6 +338,7 @@ def status() -> dict:
     wr = (s["wins"] / s["closed"] * 100) if s["closed"] else 0.0
     return {"target": TARGET, "opened": s["opened"], "closed": s["closed"], "open_now": len(open_pos),
             "win_pct": round(wr, 1), "net_usd": s["net_usd"], "done": s.get("done", False),
+            "testnet_fills": len([p for p in pos if p.get("venue")]),
             "failed_conditions": len(s["failed_conditions"]),
             "open_positions": [{k: p[k] for k in ("id", "asset", "dir", "tier", "entry", "votes", "utc_open")}
                                for p in open_pos],
