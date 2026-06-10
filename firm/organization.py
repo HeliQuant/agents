@@ -257,6 +257,11 @@ def tool_smartmoney(ticker: str) -> dict:
         return {"available": False, "mode": mode, "note": "no smart-money data for this asset"}
     clean = lambda s: re.sub(r"[^\x00-\x7f]+", " ", str(s)).strip()  # strip emojis/non-ascii for safe logging
     macro_sm = nansen.smart_money_netflow(["ethereum"])  # Nansen macro smart-money (cached; MNT ~0.64 corr to majors)
+    if macro_sm.get("available"):  # surface Nansen in /logs so its contribution + credit burn is auditable
+        print(f"   ◦ Nansen smart-money: {clean(macro_sm.get('read'))} (net24h ${macro_sm.get('net24h_total_usd')}, "
+              f"{macro_sm.get('credits_remaining')} credits left)")
+    else:
+        print(f"   ◦ Nansen smart-money: unavailable — {clean(macro_sm.get('note'))[:70]}")
     return {
         "asset": sym, "mode": mode, "flow_score_0_100": sig["score"], "read": clean(sig["label"]),
         "detail": clean(sig["detail"]),
@@ -275,10 +280,13 @@ def tool_smartsocial(ticker: str) -> dict:
     Where crypto ATTENTION is rotating + whether our asset is in the conversation. CONTEXT, forward-logged."""
     tr = elfa.trending(time_window="24h", limit=12)
     if not tr.get("available"):
+        print(f"   ◦ Elfa smart-social: unavailable — {str(tr.get('note', ''))[:70]}")
         return {"available": False, "note": tr.get("note", "Elfa unavailable")}
     trending = tr.get("trending", [])
     asset_l = ticker.lower().replace("wmnt", "mnt")
     in_trend = next((x for x in trending if (x.get("token") or "").lower() in (asset_l, "mantle", "meth", "cmeth")), None)
+    _tops = [str(x.get("token") or "?") for x in trending[:5]]
+    print(f"   ◦ Elfa smart-social: top narratives {_tops} · {ticker.upper()} in-trend={bool(in_trend)}")
     return {
         "asset": ticker.upper(),
         "asset_in_top_trending": bool(in_trend),
