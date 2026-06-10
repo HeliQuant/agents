@@ -99,6 +99,11 @@ def round_trips(symbol: str, n: int, notional: float) -> dict:
            "usdt_cost": round(usdt0 - usdt1, 4), "cost_per_trade_bps": round((usdt0 - usdt1) / max(filled, 1) / notional * 1e4, 1)}
     print(f"  DONE {symbol}: {filled} filled / {failed} failed | total cost ${out['usdt_cost']} "
           f"(~{out['cost_per_trade_bps']} bps/round-trip = spread+fees)")
+    try:  # log realized execution cost so dry_run_deviation can check it vs the modeled backtest cost
+        from firm.dry_run_deviation import log_measurement
+        log_measurement(symbol, out["cost_per_trade_bps"], filled, notional)
+    except Exception:  # noqa: BLE001
+        pass
     return out
 
 
