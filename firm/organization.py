@@ -824,8 +824,9 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
             _px = float(_dfx["close"].iloc[-1])
             try:  # FRESHNESS GATE: stale data poisons paper trials (frozen entry resolved at a fresh price
                   # = fake win/loss — caught live 2026-06-09: 4 BTC trials @ a frozen 73535.8 "won" falsely).
-                _age_h = (_pd.Timestamp.now(tz="UTC")
-                          - _pd.to_datetime(_dfx["timestamp"].iloc[-1], utc=True)).total_seconds() / 3600
+                  # `timestamp` column = epoch MILLISECONDS (must parse with unit="ms", else -> 1970).
+                _ts = _pd.to_datetime(float(_dfx["timestamp"].iloc[-1]), unit="ms", utc=True)
+                _age_h = (_pd.Timestamp.now(tz="UTC") - _ts).total_seconds() / 3600
                 _fresh = _age_h <= 6
             except Exception:  # noqa: BLE001 — can't verify freshness -> don't trial on it
                 _fresh = False
