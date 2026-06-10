@@ -36,7 +36,10 @@ BYBIT = "https://api.bybit.com"
 BASKET = ["MNT", "BTC", "ETH", "SOL", "HYPE", "SUI"]
 TARGET = 100
 SLOTS_PER_ASSET = 4
-HORIZON_H = 4               # max hold: time-exit if neither SL nor TP is hit first
+HORIZON_H = 4               # no-edge max hold: time-exit if neither SL nor TP is hit first
+HORIZON_EDGE_H = 24         # EDGE assets let winners run far longer (backtested: trail+long-cap pays only WITH edge)
+TRAIL_K = 1.8               # chandelier trailing-stop distance (xATR) — ratchets toward price on edge trades
+EDGE_SIZE_MULT = 2.0        # edge + regime-favored -> size up 2x (scripts/90: amplifying pays ONLY where edge exists)
 COST_RT = 0.0020
 COOLDOWN_H = 12
 MAX_DATA_AGE_H = 12
@@ -289,6 +292,33 @@ def _atr_pct(asset: str) -> float:
     return ATR_FALLBACK_PCT
 
 
+def _has_edge(asset: str) -> bool:
+    """True only when the asset carries a registry-VALIDATED edge (validated_edges.json). Empty today
+    by design — aggression must be earned by OOS+walk-forward+FDR, never dialed up (scripts/90)."""
+    try:
+        from firm.asset_efficiency import efficiency_read
+        return bool(efficiency_read(asset).get("has_edge"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _regime_favors(asset: str, direction: str) -> bool:
+    """Light 1h-kline trend read: does the prevailing regime back this trade's direction? Used ONLY to
+    2x an EDGE asset — the backtest showed sizing up multiplies losses without an underlying edge."""
+    try:
+        r = requests.get(f"{BYBIT}/v5/market/kline",
+                         params={"category": "linear", "symbol": f"{asset}USDT", "interval": "60", "limit": "60"},
+                         timeout=12).json()
+        closes = [float(x[4]) for x in reversed(r["result"]["list"])]
+        if len(closes) < 50:
+            return False
+        sma = sum(closes[-48:]) / 48
+        slope = closes[-1] - closes[-6]
+        return (closes[-1] < sma and slope < 0) if direction == "SHORT" else (closes[-1] > sma and slope > 0)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def step(log=print) -> dict:
     """One campaign step: resolve matured positions, open new desk-justified ones. Called by the app
     loop every CAMPAIGN_STEP_MIN. Cheap (no LLM): a few HTTP calls + CSV reads."""
@@ -317,12 +347,24 @@ def step(log=print) -> dict:
         if not px:
             continue
         reason = None
-        if p.get("sl") is not None and p.get("tp") is not None:
+        if p.get("edge"):  # EDGE asset -> chandelier trailing stop: let the winner run, ratchet stop toward price
+            a_atr = ((p.get("atr_pct") or 0) / 100) or ATR_FALLBACK_PCT
+            if p["dir"] == "SHORT":
+                p["best"] = min(p.get("best", p["entry"]), px)
+                p["trail"] = min(p.get("trail", p.get("sl", px)), p["best"] * (1 + TRAIL_K * a_atr))
+                if px >= p["trail"]:
+                    reason = "TRAIL"
+            else:
+                p["best"] = max(p.get("best", p["entry"]), px)
+                p["trail"] = max(p.get("trail", p.get("sl", px)), p["best"] * (1 - TRAIL_K * a_atr))
+                if px <= p["trail"]:
+                    reason = "TRAIL"
+        elif p.get("sl") is not None and p.get("tp") is not None:
             if p["dir"] == "LONG":
                 reason = "SL" if px <= p["sl"] else "TP" if px >= p["tp"] else None
             else:  # SHORT: SL above entry, TP below
                 reason = "SL" if px >= p["sl"] else "TP" if px <= p["tp"] else None
-        if reason is None and _now() - p["t_open"] >= HORIZON_H * 3600:
+        if reason is None and _now() - p["t_open"] >= p.get("cap_h", HORIZON_H) * 3600:
             reason = "TIME"
         if reason is None:
             continue  # still open, neither level hit nor matured
@@ -335,7 +377,7 @@ def step(log=print) -> dict:
         s["net_usd"] = round(s["net_usd"] + pnl, 4)
         if pnl > 0:
             s["wins"] += 1
-        icon = {"TP": "🎯", "SL": "🛑", "TIME": "⏱"}[reason]
+        icon = {"TP": "🎯", "SL": "🛑", "TIME": "⏱", "TRAIL": "🪤"}[reason]
         log(f"  {'🟩' if pnl > 0 else '🟥'}{icon} CAMPAIGN CLOSE #{p['id']} {p['dir']} {p['asset']} {reason} "
             f"{p['net_pct']:+.2f}% (${pnl:+.2f}) | total ${s['net_usd']:+.2f}")
         _exec_close(p, log)
@@ -377,15 +419,23 @@ def step(log=print) -> dict:
         sgn = 1 if direction == "LONG" else -1
         sl = round(px * (1 - sgn * sl_d), 8)   # LONG: SL below entry · SHORT: SL above
         tp = round(px * (1 + sgn * tp_d), 8)   # LONG: TP above entry · SHORT: TP below
+        # ── edge-gated aggression (scripts/90): amplify ONLY where a validated edge exists. No edge ->
+        #    base size, tight 4h cap, fixed SL/TP (unchanged). Edge -> let it run (trailing) and, if the
+        #    regime backs it, size up 2x. Today validated_edges.json is empty, so this stays disciplined. ──
+        edge = _has_edge(a)
+        base = VIRTUAL_FULL if tier == "STRONG" else VIRTUAL_LEAN
+        size = base * EDGE_SIZE_MULT if (edge and _regime_favors(a, direction)) else base
+        cap_h = HORIZON_EDGE_H if edge else HORIZON_H
         p = {"id": s["opened"] + 1, "asset": a, "dir": direction, "tier": tier,
-             "size_usd": VIRTUAL_FULL if tier == "STRONG" else VIRTUAL_LEAN,
+             "size_usd": size, "edge": edge, "cap_h": cap_h, "best": px, "trail": sl,
              "entry": px, "sl": sl, "tp": tp, "atr_pct": round(atr * 100, 3),
              "sl_pct": round(sl_d * 100, 2), "tp_pct": round(tp_d * 100, 2),
              "t_open": _now(), "utc_open": datetime.now(timezone.utc).isoformat(),
              "votes": net, "reasons": reasons[:6], "cond": cond, "exit": None}
         pos.append(p)
         s["opened"] += 1
-        log(f"  🟢 CAMPAIGN OPEN #{p['id']} {direction} {a} @ {px} {tier} (net {net:+}) "
+        ex_txt = f"EDGE×{EDGE_SIZE_MULT:g} trail/{cap_h}h" if (edge and size > base) else ("EDGE trail" if edge else f"{cap_h}h cap")
+        log(f"  🟢 CAMPAIGN OPEN #{p['id']} {direction} {a} @ {px} {tier} ${size:g} [{ex_txt}] (net {net:+}) "
             f"SL {sl} (−{sl_d*100:.1f}%) · TP {tp} (+{tp_d*100:.1f}%) · ATR {atr*100:.2f}% — {'; '.join(reasons[:2])}")
         _exec_open(p, log)  # LONGs become REAL Bybit TESTNET spot fills when CAMPAIGN_EXECUTE=1
 
@@ -412,7 +462,7 @@ def status() -> dict:
     recent = [p for p in pos if p.get("exit") is not None][-12:]
     wr = (s["wins"] / s["closed"] * 100) if s["closed"] else 0.0
     closed = [p for p in pos if p.get("exit") is not None]
-    by_reason = {r: len([p for p in closed if p.get("exit_reason") == r]) for r in ("TP", "SL", "TIME")}
+    by_reason = {r: len([p for p in closed if p.get("exit_reason") == r]) for r in ("TP", "SL", "TIME", "TRAIL")}
     from firm import state_store  # diagnostics: is the step alive, and do writes actually persist?
     save_err = state_store.LAST_SAVE_ERR.get("campaign_pos", "")
     diag = {"campaign_on": os.environ.get("CAMPAIGN", "1") == "1",
@@ -435,7 +485,10 @@ def status() -> dict:
             "testnet_fills": len([p for p in pos if p.get("venue")]),
             "exits_by_reason": by_reason, "failed_conditions": len(s["failed_conditions"]),
             "horizon_h": HORIZON_H, **diag,
-            "risk_model": f"ATR-based · SL {ATR_SL_MULT}×ATR · TP {ATR_TP_MULT}×ATR · max-hold {HORIZON_H}h",
+            "edge_open": len([p for p in open_pos if p.get("edge")]),
+            "sized_up_open": len([p for p in open_pos if (p.get("size_usd") or 0) > VIRTUAL_FULL]),
+            "risk_model": (f"edge-gated · NO-edge: SL {ATR_SL_MULT}×ATR / TP {ATR_TP_MULT}×ATR / {HORIZON_H}h cap · "
+                           f"EDGE: trailing {TRAIL_K}×ATR / {HORIZON_EDGE_H}h, regime-favored size ×{EDGE_SIZE_MULT:g}"),
             "open_positions": [_view(p) for p in open_pos],
             "recent_closes": [{k: p.get(k) for k in ("id", "asset", "dir", "exit", "exit_reason",
                                                      "net_pct", "pnl_usd", "utc_close")} for p in recent],
