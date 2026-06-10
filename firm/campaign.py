@@ -408,17 +408,29 @@ def step(log=print) -> dict:
 def status() -> dict:
     s, pos = _load()
     open_pos = [p for p in pos if p.get("exit") is None]
-    recent = [p for p in pos if p.get("exit") is not None][-10:]
+    recent = [p for p in pos if p.get("exit") is not None][-12:]
     wr = (s["wins"] / s["closed"] * 100) if s["closed"] else 0.0
     closed = [p for p in pos if p.get("exit") is not None]
     by_reason = {r: len([p for p in closed if p.get("exit_reason") == r]) for r in ("TP", "SL", "TIME")}
+    prices = live_prices() if open_pos else {}   # one batched mark so the FE can place each car live
+
+    def _view(p: dict) -> dict:
+        v = {k: p.get(k) for k in ("id", "asset", "dir", "tier", "entry", "sl", "tp",
+                                   "sl_pct", "tp_pct", "votes", "reasons", "utc_open")}
+        now = prices.get(p["asset"])
+        if now:
+            sign = 1 if p["dir"] == "LONG" else -1
+            v["now"] = now
+            v["upnl_pct"] = round((sign * (now / p["entry"] - 1) - COST_RT) * 100, 3)  # net of cost, honest
+        return v
+
     return {"target": TARGET, "opened": s["opened"], "closed": s["closed"], "open_now": len(open_pos),
             "win_pct": round(wr, 1), "net_usd": s["net_usd"], "done": s.get("done", False),
             "testnet_fills": len([p for p in pos if p.get("venue")]),
             "exits_by_reason": by_reason, "failed_conditions": len(s["failed_conditions"]),
+            "horizon_h": HORIZON_H,
             "risk_model": f"ATR-based · SL {ATR_SL_MULT}×ATR · TP {ATR_TP_MULT}×ATR · max-hold {HORIZON_H}h",
-            "open_positions": [{k: p.get(k) for k in ("id", "asset", "dir", "tier", "entry", "sl", "tp",
-                                                       "sl_pct", "tp_pct", "votes", "utc_open")} for p in open_pos],
+            "open_positions": [_view(p) for p in open_pos],
             "recent_closes": [{k: p.get(k) for k in ("id", "asset", "dir", "exit", "exit_reason",
                                                      "net_pct", "pnl_usd", "utc_close")} for p in recent],
             "principle": "paper capital at live prices — REAL capital still requires a validated edge"}
