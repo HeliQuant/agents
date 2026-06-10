@@ -73,6 +73,9 @@ def propose_trial(asset: str, flow_reads: dict) -> dict | None:
     cond = _cond_key(flow_reads)
     if cond in s.get("failed_conditions", []):
         return None  # learned: this flow-consensus has no edge -> don't repeat ("why I was wrong")
+    if any(t.get("outcome") is None and t["asset"] == asset.upper() and t["condition"] == cond
+           for t in s["trials"]):
+        return None  # this hypothesis is already on trial — the budget buys DISTINCT hypotheses, not copies
     bull = sum(1 for d in DESKS if any(k in str(flow_reads.get(d, "")).lower() for k in ("bull", "long", "accum")))
     bear = sum(1 for d in DESKS if any(k in str(flow_reads.get(d, "")).lower() for k in ("bear", "short", "distrib")))
     if abs(bull - bear) < 2:
