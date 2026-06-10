@@ -394,6 +394,7 @@ def step(log=print) -> dict:
         s["done"] = True
         wr = (s["wins"] / s["closed"] * 100) if s["closed"] else 0.0
         log(f"  🏁 CAMPAIGN COMPLETE: {s['opened']} opened · win {wr:.1f}% · net ${s['net_usd']:+.2f}")
+    s["last_step_utc"] = datetime.now(timezone.utc).isoformat()  # heartbeat: proves the step actually runs
     _save(s, pos, log)
     try:  # readback verify — proves sl/tp actually persisted (diagnoses the not-showing issue)
         from firm import state_store
@@ -412,6 +413,11 @@ def status() -> dict:
     wr = (s["wins"] / s["closed"] * 100) if s["closed"] else 0.0
     closed = [p for p in pos if p.get("exit") is not None]
     by_reason = {r: len([p for p in closed if p.get("exit_reason") == r]) for r in ("TP", "SL", "TIME")}
+    from firm import state_store  # diagnostics: is the step alive, and do writes actually persist?
+    save_err = state_store.LAST_SAVE_ERR.get("campaign_pos", "")
+    diag = {"campaign_on": os.environ.get("CAMPAIGN", "1") == "1",
+            "last_step_utc": s.get("last_step_utc"),
+            "persist": "local" if save_err else "supabase", "save_err": save_err}
     prices = live_prices() if open_pos else {}   # one batched mark so the FE can place each car live
 
     def _view(p: dict) -> dict:
@@ -428,7 +434,7 @@ def status() -> dict:
             "win_pct": round(wr, 1), "net_usd": s["net_usd"], "done": s.get("done", False),
             "testnet_fills": len([p for p in pos if p.get("venue")]),
             "exits_by_reason": by_reason, "failed_conditions": len(s["failed_conditions"]),
-            "horizon_h": HORIZON_H,
+            "horizon_h": HORIZON_H, **diag,
             "risk_model": f"ATR-based · SL {ATR_SL_MULT}×ATR · TP {ATR_TP_MULT}×ATR · max-hold {HORIZON_H}h",
             "open_positions": [_view(p) for p in open_pos],
             "recent_closes": [{k: p.get(k) for k in ("id", "asset", "dir", "exit", "exit_reason",
