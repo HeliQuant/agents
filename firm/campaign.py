@@ -36,10 +36,13 @@ BYBIT = "https://api.bybit.com"
 BASKET = ["MNT", "BTC", "ETH", "SOL", "HYPE", "SUI"]
 TARGET = 100
 SLOTS_PER_ASSET = 4
-HORIZON_H = 4
+HORIZON_H = 4               # max hold: time-exit if neither SL nor TP is hit first
 COST_RT = 0.0020
 COOLDOWN_H = 12
 MAX_DATA_AGE_H = 12
+ATR_TP_MULT = 2.5           # take-profit at 2.5x the 1h ATR (reachable within the 4h horizon if it trends)
+ATR_SL_MULT = 1.8           # stop-loss at 1.8x ATR -> R:R ~1.4, both sized to the asset's real volatility
+ATR_FALLBACK_PCT = 0.006    # 0.6% if ATR can't be measured
 VIRTUAL_FULL = 100.0
 VIRTUAL_LEAN = 50.0
 
@@ -253,6 +256,36 @@ def _cond_key(asset: str, reasons: list[str]) -> str:
                                           for r in reasons))
 
 
+def _atr_pct(asset: str) -> float:
+    """ATR(14) on 1h candles as a fraction of price — the asset's REAL volatility, which sets the SL/TP
+    distance (so a calm asset gets tight stops, a wild one gets room). Bybit kline (reachable from the
+    cloud); falls back to close-to-close realized vol from the fed data, then a flat 0.6%."""
+    try:
+        r = requests.get(f"{BYBIT}/v5/market/kline",
+                         params={"category": "linear", "symbol": f"{asset}USDT", "interval": "60", "limit": "50"},
+                         timeout=12).json()
+        rows = list(reversed(r["result"]["list"]))  # Bybit returns newest-first
+        highs = [float(x[2]) for x in rows]
+        lows = [float(x[3]) for x in rows]
+        closes = [float(x[4]) for x in rows]
+        trs = [max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+               for i in range(1, len(rows))]
+        if len(trs) >= 14 and closes[-1] > 0:
+            atr = sum(trs[-14:]) / 14
+            if atr > 0:
+                return min(0.06, atr / closes[-1])
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        c = pd.read_csv(ROOT / "data" / f"{asset.lower()}_positioning.csv")["close"].astype(float).tail(48)
+        v = float(c.pct_change().dropna().std())
+        if v > 0:
+            return min(0.05, max(0.002, v))
+    except Exception:  # noqa: BLE001
+        pass
+    return ATR_FALLBACK_PCT
+
+
 def step(log=print) -> dict:
     """One campaign step: resolve matured positions, open new desk-justified ones. Called by the app
     loop every CAMPAIGN_STEP_MIN. Cheap (no LLM): a few HTTP calls + CSV reads."""
@@ -261,23 +294,34 @@ def step(log=print) -> dict:
         return s
     prices = live_prices()
 
-    # ── resolve matured ──
+    # ── resolve: SL hit, TP hit, or 4h time-exit (whichever comes first) ──
     for p in pos:
-        if p.get("exit") is not None or _now() - p["t_open"] < HORIZON_H * 3600:
+        if p.get("exit") is not None:
             continue
         px = prices.get(p["asset"])
         if not px:
             continue
+        reason = None
+        if p.get("sl") is not None and p.get("tp") is not None:
+            if p["dir"] == "LONG":
+                reason = "SL" if px <= p["sl"] else "TP" if px >= p["tp"] else None
+            else:  # SHORT: SL above entry, TP below
+                reason = "SL" if px >= p["sl"] else "TP" if px <= p["tp"] else None
+        if reason is None and _now() - p["t_open"] >= HORIZON_H * 3600:
+            reason = "TIME"
+        if reason is None:
+            continue  # still open, neither level hit nor matured
         sign = 1 if p["dir"] == "LONG" else -1
         net_pct = sign * (px / p["entry"] - 1) - COST_RT
         pnl = round(net_pct * p["size_usd"], 4)
-        p.update(exit=px, net_pct=round(net_pct * 100, 3), pnl_usd=pnl,
+        p.update(exit=px, exit_reason=reason, net_pct=round(net_pct * 100, 3), pnl_usd=pnl,
                  utc_close=datetime.now(timezone.utc).isoformat())
         s["closed"] += 1
         s["net_usd"] = round(s["net_usd"] + pnl, 4)
         if pnl > 0:
             s["wins"] += 1
-        log(f"  {'🟩' if pnl > 0 else '🟥'} CAMPAIGN CLOSE #{p['id']} {p['dir']} {p['asset']} "
+        icon = {"TP": "🎯", "SL": "🛑", "TIME": "⏱"}[reason]
+        log(f"  {'🟩' if pnl > 0 else '🟥'}{icon} CAMPAIGN CLOSE #{p['id']} {p['dir']} {p['asset']} {reason} "
             f"{p['net_pct']:+.2f}% (${pnl:+.2f}) | total ${s['net_usd']:+.2f}")
         _exec_close(p, log)
         r = s["rounds"].setdefault(p["asset"], {"closed": 0, "pnl": 0.0, "conds": []})
@@ -313,13 +357,21 @@ def step(log=print) -> dict:
             continue
         direction = "LONG" if net > 0 else "SHORT"
         tier = "STRONG" if abs(net) >= 2 else "LEAN"
+        atr = _atr_pct(a)
+        sl_d, tp_d = ATR_SL_MULT * atr, ATR_TP_MULT * atr
+        sgn = 1 if direction == "LONG" else -1
+        sl = round(px * (1 - sgn * sl_d), 8)   # LONG: SL below entry · SHORT: SL above
+        tp = round(px * (1 + sgn * tp_d), 8)   # LONG: TP above entry · SHORT: TP below
         p = {"id": s["opened"] + 1, "asset": a, "dir": direction, "tier": tier,
              "size_usd": VIRTUAL_FULL if tier == "STRONG" else VIRTUAL_LEAN,
-             "entry": px, "t_open": _now(), "utc_open": datetime.now(timezone.utc).isoformat(),
+             "entry": px, "sl": sl, "tp": tp, "atr_pct": round(atr * 100, 3),
+             "sl_pct": round(sl_d * 100, 2), "tp_pct": round(tp_d * 100, 2),
+             "t_open": _now(), "utc_open": datetime.now(timezone.utc).isoformat(),
              "votes": net, "reasons": reasons[:6], "cond": cond, "exit": None}
         pos.append(p)
         s["opened"] += 1
-        log(f"  🟢 CAMPAIGN OPEN #{p['id']} {direction} {a} @ {px} {tier} (net {net:+}) — {'; '.join(reasons[:3])}")
+        log(f"  🟢 CAMPAIGN OPEN #{p['id']} {direction} {a} @ {px} {tier} (net {net:+}) "
+            f"SL {sl} (−{sl_d*100:.1f}%) · TP {tp} (+{tp_d*100:.1f}%) · ATR {atr*100:.2f}% — {'; '.join(reasons[:2])}")
         _exec_open(p, log)  # LONGs become REAL Bybit TESTNET spot fills when CAMPAIGN_EXECUTE=1
 
     open_now = len([p for p in pos if p.get("exit") is None])
@@ -336,12 +388,15 @@ def status() -> dict:
     open_pos = [p for p in pos if p.get("exit") is None]
     recent = [p for p in pos if p.get("exit") is not None][-10:]
     wr = (s["wins"] / s["closed"] * 100) if s["closed"] else 0.0
+    closed = [p for p in pos if p.get("exit") is not None]
+    by_reason = {r: len([p for p in closed if p.get("exit_reason") == r]) for r in ("TP", "SL", "TIME")}
     return {"target": TARGET, "opened": s["opened"], "closed": s["closed"], "open_now": len(open_pos),
             "win_pct": round(wr, 1), "net_usd": s["net_usd"], "done": s.get("done", False),
             "testnet_fills": len([p for p in pos if p.get("venue")]),
-            "failed_conditions": len(s["failed_conditions"]),
-            "open_positions": [{k: p[k] for k in ("id", "asset", "dir", "tier", "entry", "votes", "utc_open")}
-                               for p in open_pos],
-            "recent_closes": [{k: p.get(k) for k in ("id", "asset", "dir", "net_pct", "pnl_usd", "utc_close")}
-                              for p in recent],
+            "exits_by_reason": by_reason, "failed_conditions": len(s["failed_conditions"]),
+            "risk_model": f"ATR-based · SL {ATR_SL_MULT}×ATR · TP {ATR_TP_MULT}×ATR · max-hold {HORIZON_H}h",
+            "open_positions": [{k: p.get(k) for k in ("id", "asset", "dir", "tier", "entry", "sl", "tp",
+                                                       "sl_pct", "tp_pct", "votes", "utc_open")} for p in open_pos],
+            "recent_closes": [{k: p.get(k) for k in ("id", "asset", "dir", "exit", "exit_reason",
+                                                     "net_pct", "pnl_usd", "utc_close")} for p in recent],
             "principle": "paper capital at live prices — REAL capital still requires a validated edge"}
