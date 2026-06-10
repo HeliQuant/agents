@@ -294,6 +294,18 @@ def step(log=print) -> dict:
         return s
     prices = live_prices()
 
+    # ── backfill ATR SL/TP onto legacy open positions (opened before the risk model) so they too
+    #    exit on a level instead of only at the 4h cap — clears slots faster for fresh signals ──
+    for p in pos:
+        if p.get("exit") is None and p.get("sl") is None:
+            atr = _atr_pct(p["asset"])
+            sl_d, tp_d = ATR_SL_MULT * atr, ATR_TP_MULT * atr
+            sgn = 1 if p["dir"] == "LONG" else -1
+            p["sl"] = round(p["entry"] * (1 - sgn * sl_d), 8)
+            p["tp"] = round(p["entry"] * (1 + sgn * tp_d), 8)
+            p["sl_pct"], p["tp_pct"], p["atr_pct"] = round(sl_d * 100, 2), round(tp_d * 100, 2), round(atr * 100, 3)
+            log(f"  ⚙ CAMPAIGN backfill SL/TP #{p['id']} {p['dir']} {p['asset']}: SL {p['sl']} · TP {p['tp']}")
+
     # ── resolve: SL hit, TP hit, or 4h time-exit (whichever comes first) ──
     for p in pos:
         if p.get("exit") is not None:
