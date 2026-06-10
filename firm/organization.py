@@ -818,8 +818,20 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
         import pandas as _pd
         from firm import exploration as _expl
         _fp = _P(__file__).resolve().parents[1] / "data" / f"{ticker.lower()}_positioning.csv"
-        _px = float(_pd.read_csv(_fp)["close"].iloc[-1]) if _fp.exists() else None
-        if _px:
+        _px, _fresh, _age_h = None, False, 9e9
+        if _fp.exists():
+            _dfx = _pd.read_csv(_fp)
+            _px = float(_dfx["close"].iloc[-1])
+            try:  # FRESHNESS GATE: stale data poisons paper trials (frozen entry resolved at a fresh price
+                  # = fake win/loss — caught live 2026-06-09: 4 BTC trials @ a frozen 73535.8 "won" falsely).
+                _age_h = (_pd.Timestamp.now(tz="UTC")
+                          - _pd.to_datetime(_dfx["timestamp"].iloc[-1], utc=True)).total_seconds() / 3600
+                _fresh = _age_h <= 6
+            except Exception:  # noqa: BLE001 — can't verify freshness -> don't trial on it
+                _fresh = False
+        if _px and not _fresh and verbose:
+            print(f"   🧪 EXPLORATION paused — positioning data stale ({_age_h:.0f}h old); trials need fresh prices")
+        if _px and _fresh:
             _ev = _expl.resolve_and_learn({ticker: _px})
             if verbose and _ev.get("learned"):
                 print(f"   🧪 EXPLORATION learned: {_ev['result']} (net {_ev['net_pct']}%) — {_ev['lesson']}")
