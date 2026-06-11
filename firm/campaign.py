@@ -259,7 +259,35 @@ def desk_votes(asset: str) -> tuple[int, list[str]]:
             votes.append((-1, "whale:SHORT"))
     except Exception:  # noqa: BLE001
         pass
+    # MANTLE-NATIVE lean for the flagship (MNT + Mantle-eco): capital flowing INTO Mantle (rising chain
+    # TVL) = risk-on -> long lean; OUT = risk-off -> short. Real DeFiLlama data so HeliQuant's home asset
+    # isn't idle when the generic desks are flat. Advisory/exploration — the cond_record loop fades it.
+    if asset.upper() in ("MNT", "METH", "CMETH", "FBTC", "USDE", "USDY"):
+        lean, why = _mantle_lean()
+        if lean:
+            votes.append((lean, why))
     return sum(v for v, _ in votes), [r for _, r in votes]
+
+
+def _mantle_lean() -> tuple[int, str]:
+    """Directional lean from DeFiLlama Mantle chain-TVL flow — 7d trend primary, 30d fallback."""
+    try:
+        from firm.defillama_client import chain_tvl
+        t = chain_tvl("Mantle")
+        if not t:
+            return 0, ""
+        c7, c30 = t.get("chg7d_pct", 0.0), t.get("chg30d_pct", 0.0)
+        if c7 > 1:
+            return 1, f"mantle-tvl:+{c7:.0f}%/7d->L"
+        if c7 < -1:
+            return -1, f"mantle-tvl:{c7:.0f}%/7d->S"
+        if c30 > 5:
+            return 1, f"mantle-tvl:+{c30:.0f}%/30d->L"
+        if c30 < -5:
+            return -1, f"mantle-tvl:{c30:.0f}%/30d->S"
+        return 0, ""
+    except Exception:  # noqa: BLE001
+        return 0, ""
 
 
 def _cond_key(asset: str, reasons: list[str]) -> str:
