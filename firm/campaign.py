@@ -42,6 +42,8 @@ TRAIL_K = 1.8               # chandelier trailing-stop distance (xATR) — ratch
 EDGE_SIZE_MULT = 2.0        # edge + regime-favored -> size up 2x (scripts/90: amplifying pays ONLY where edge exists)
 COST_RT = 0.0020
 COOLDOWN_H = 12
+FAIL_BAN_H = 24             # a failed condition is benched 24h then FORGIVEN + re-tried (regime may have
+                            #   turned) — bans EXPIRE so the firm can adapt back, never starves permanently
 MAX_DATA_AGE_H = 12
 ATR_TP_MULT = 2.5           # take-profit at 2.5x the 1h ATR (reachable within the 4h horizon if it trends)
 ATR_SL_MULT = 1.8           # stop-loss at 1.8x ATR -> R:R ~1.4, both sized to the asset's real volatility
@@ -53,7 +55,7 @@ _GECKO_IDS = {"MNT": "mantle", "BTC": "bitcoin", "ETH": "ethereum",
               "SOL": "solana", "HYPE": "hyperliquid", "SUI": "sui"}
 
 _DEF = {"opened": 0, "closed": 0, "wins": 0, "net_usd": 0.0,
-        "failed_conditions": [], "cooldown_until": {}, "rounds": {}, "done": False}
+        "failed_conditions": {}, "cooldown_until": {}, "rounds": {}, "done": False}
 
 
 def _now() -> float:
@@ -335,6 +337,10 @@ def step(log=print) -> dict:
     s, pos = _load()
     if s.get("done"):
         return s
+    # migrate legacy permanent bans (list) -> expiring bans (dict). Forgive them now (expiry 0): the
+    # regime that failed them has likely turned, so re-try; if they still lose they re-ban with a TTL.
+    if isinstance(s.get("failed_conditions"), list):
+        s["failed_conditions"] = {c: 0.0 for c in s["failed_conditions"]}
     prices = live_prices()
 
     # ── backfill ATR SL/TP onto legacy open positions (opened before the risk model) so they too
@@ -398,10 +404,9 @@ def step(log=print) -> dict:
         if r["closed"] >= SLOTS_PER_ASSET:
             if r["pnl"] <= 0:
                 for c in set(r["conds"]):
-                    if c not in s["failed_conditions"]:
-                        s["failed_conditions"].append(c)
+                    s["failed_conditions"][c] = _now() + FAIL_BAN_H * 3600   # benched, not banned forever
                 s["cooldown_until"][p["asset"]] = _now() + COOLDOWN_H * 3600
-                log(f"  📚 CAMPAIGN LEARN {p['asset']}: round ${r['pnl']:+.2f} -> conditions FAILED + cooldown")
+                log(f"  📚 CAMPAIGN LEARN {p['asset']}: round ${r['pnl']:+.2f} -> conditions benched {FAIL_BAN_H}h + cooldown")
             s["rounds"][p["asset"]] = {"closed": 0, "pnl": 0.0, "conds": []}
 
     # ── open new (desk-justified only) ──
@@ -417,8 +422,8 @@ def step(log=print) -> dict:
         if net == 0 or not reasons:
             continue  # desks flat -> no coin-flips, even on paper
         cond = _cond_key(a, reasons)
-        if cond in s["failed_conditions"]:
-            continue
+        if _now() < s["failed_conditions"].get(cond, 0):
+            continue  # still benched (ban not yet expired); after FAIL_BAN_H it's forgiven + re-tried
         px = prices.get(a)
         if not px:
             continue
@@ -503,10 +508,12 @@ def status() -> dict:
             v["upnl_pct"] = round((sign * (now / p["entry"] - 1) - COST_RT) * 100, 3)  # net of cost, honest
         return v
 
+    _fc = s.get("failed_conditions") or {}
+    fc_active = len(_fc) if isinstance(_fc, list) else len([1 for e in _fc.values() if _now() < e])
     return {"target": TARGET, "opened": s["opened"], "closed": s["closed"], "open_now": len(open_pos),
             "win_pct": round(wr, 1), "net_usd": s["net_usd"], "done": s.get("done", False),
             "testnet_fills": len([p for p in pos if p.get("venue")]),
-            "exits_by_reason": by_reason, "failed_conditions": len(s["failed_conditions"]),
+            "exits_by_reason": by_reason, "failed_conditions": fc_active,
             "horizon_h": HORIZON_H, **diag,
             "edge_open": len([p for p in open_pos if p.get("edge")]),
             "sized_up_open": len([p for p in open_pos if (p.get("size_usd") or 0) > VIRTUAL_FULL]),
