@@ -375,8 +375,7 @@ def step(log=print) -> dict:
     """One campaign step: resolve matured positions, open new desk-justified ones. Called by the app
     loop every CAMPAIGN_STEP_MIN. Cheap (no LLM): a few HTTP calls + CSV reads."""
     s, pos = _load()
-    if s.get("done"):
-        return s
+    s["done"] = False  # continuous autonomous floor — clear any stale 'done' so it never freezes
     # migrate legacy permanent bans (list) -> expiring bans (dict). Forgive them now (expiry 0): the
     # regime that failed them has likely turned, so re-try; if they still lose they re-ban with a TTL.
     if isinstance(s.get("failed_conditions"), list):
@@ -458,9 +457,8 @@ def step(log=print) -> dict:
     # ── open new (desk-justified only) ──
     scan: dict = {}   # per-asset: WHY it did/didn't open this step (diagnostic, surfaced on /campaign)
     for a in BASKET:
-        if s["opened"] >= TARGET:
-            scan[a] = "target reached"
-            continue
+        # NO lifetime cap — fully autonomous, trades continuously. The only throttle is SLOTS_PER_ASSET
+        # (max concurrent positions per asset); lifetime opened just keeps climbing.
         cd = s["cooldown_until"].get(a, 0) - _now()
         if cd > 0:
             scan[a] = f"cooldown {cd / 3600:.1f}h"
@@ -555,10 +553,7 @@ def step(log=print) -> dict:
 
     s["last_scan"] = scan  # why each asset did/didn't open this step (surfaced on /campaign)
     open_now = len([p for p in pos if p.get("exit") is None])
-    if s["opened"] >= TARGET and open_now == 0:
-        s["done"] = True
-        wr = (s["wins"] / s["closed"] * 100) if s["closed"] else 0.0
-        log(f"  🏁 CAMPAIGN COMPLETE: {s['opened']} opened · win {wr:.1f}% · net ${s['net_usd']:+.2f}")
+    s["done"] = False  # never completes — continuous autonomous floor
     s["last_step_utc"] = datetime.now(timezone.utc).isoformat()  # heartbeat: proves the step actually runs
     _save(s, pos, log)
     try:  # readback verify — proves sl/tp actually persisted (diagnoses the not-showing issue)
@@ -601,8 +596,9 @@ def status() -> dict:
 
     _fc = s.get("failed_conditions") or {}
     fc_active = len(_fc) if isinstance(_fc, list) else len([1 for e in _fc.values() if _now() < e])
-    return {"target": TARGET, "opened": s["opened"], "closed": s["closed"], "open_now": len(open_pos),
-            "win_pct": round(wr, 1), "net_usd": s["net_usd"], "done": s.get("done", False),
+    return {"target": None, "continuous": True,  # no lifetime cap — fully autonomous, never 'done'
+            "opened": s["opened"], "closed": s["closed"], "open_now": len(open_pos),
+            "win_pct": round(wr, 1), "net_usd": s["net_usd"], "done": False,
             "testnet_fills": len([p for p in pos if p.get("venue")]),
             "exits_by_reason": by_reason, "failed_conditions": fc_active,
             "horizon_h": HORIZON_H, **diag,
