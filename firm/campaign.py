@@ -302,21 +302,27 @@ def _has_edge(asset: str) -> bool:
         return False
 
 
-def _regime_favors(asset: str, direction: str) -> bool:
-    """Light 1h-kline trend read: does the prevailing regime back this trade's direction? Used ONLY to
-    2x an EDGE asset — the backtest showed sizing up multiplies losses without an underlying edge."""
+def _trend(asset: str) -> str:
+    """Light 1h-kline regime read -> 'up' / 'down' / 'flat' (price vs SMA48 + short slope). A cheap
+    proxy for the 82.6% regime classifier, used to keep the campaign from FIGHTING a clear trend:
+    don't short a strong uptrend, don't long a strong downtrend. (Live evidence: every counter-trend
+    short bled while trend-aligned longs won — that's a regime bleed, not an edge.)"""
     try:
         r = requests.get(f"{BYBIT}/v5/market/kline",
                          params={"category": "linear", "symbol": f"{asset}USDT", "interval": "60", "limit": "60"},
                          timeout=12).json()
         closes = [float(x[4]) for x in reversed(r["result"]["list"])]
         if len(closes) < 50:
-            return False
+            return "flat"
         sma = sum(closes[-48:]) / 48
         slope = closes[-1] - closes[-6]
-        return (closes[-1] < sma and slope < 0) if direction == "SHORT" else (closes[-1] > sma and slope > 0)
+        if closes[-1] > sma and slope > 0:
+            return "up"
+        if closes[-1] < sma and slope < 0:
+            return "down"
+        return "flat"
     except Exception:  # noqa: BLE001
-        return False
+        return "flat"
 
 
 def step(log=print) -> dict:
@@ -413,6 +419,13 @@ def step(log=print) -> dict:
         if not px:
             continue
         direction = "LONG" if net > 0 else "SHORT"
+        # ── REGIME ENTRY GATE: don't fight a clear trend. Live diagnosis — every counter-trend short
+        #    bled (-1.3..-3.3%) while trend-aligned longs won; the contrarian desk vote was getting run
+        #    over by the move. Skip an entry the prevailing 1h regime clearly opposes (proxy classifier). ──
+        trend = _trend(a)
+        if (trend == "up" and direction == "SHORT") or (trend == "down" and direction == "LONG"):
+            log(f"  ⊘ CAMPAIGN SKIP {a} {direction}: counter-trend (regime={trend}) — don't fight the move")
+            continue
         tier = "STRONG" if abs(net) >= 2 else "LEAN"
         atr = _atr_pct(a)
         sl_d, tp_d = ATR_SL_MULT * atr, ATR_TP_MULT * atr
@@ -423,8 +436,9 @@ def step(log=print) -> dict:
         #    base size, tight 4h cap, fixed SL/TP (unchanged). Edge -> let it run (trailing) and, if the
         #    regime backs it, size up 2x. Today validated_edges.json is empty, so this stays disciplined. ──
         edge = _has_edge(a)
+        favors = (trend == "down" and direction == "SHORT") or (trend == "up" and direction == "LONG")
         base = VIRTUAL_FULL if tier == "STRONG" else VIRTUAL_LEAN
-        size = base * EDGE_SIZE_MULT if (edge and _regime_favors(a, direction)) else base
+        size = base * EDGE_SIZE_MULT if (edge and favors) else base
         cap_h = HORIZON_EDGE_H if edge else HORIZON_H
         p = {"id": s["opened"] + 1, "asset": a, "dir": direction, "tier": tier,
              "size_usd": size, "edge": edge, "cap_h": cap_h, "best": px, "trail": sl,
