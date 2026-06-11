@@ -293,6 +293,43 @@ def campaign_status():
         return JSONResponse({"error": str(e)[:120]}, status_code=500)
 
 
+@app.get("/desks")
+def desks():
+    """DESK RELIABILITY (strategic self-learning) — each of the 9 desks earns a weight 0.6-1.4 by
+    track record (its stance vs realized direction, >=15 samples). Neutral 1.0 until a desk proves
+    itself; OI-Contrarian is seeded from its OOS replay. Surfaced for the /learning Tuning Bay."""
+    try:
+        from firm import desk_performance as dp
+        out = {"desks": dp.DESKS, "bounds": [dp.LO, dp.HI], "min_samples": dp.MIN_SAMPLES,
+               "weights": dp.load_weights(), "detail": {}}
+        if dp.WEIGHTS.exists():
+            out["detail"] = json.loads(dp.WEIGHTS.read_text()).get("detail", {})
+        return JSONResponse(out)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)[:120]}, status_code=500)
+
+
+@app.get("/edges")
+def edges():
+    """THE EDGE REGISTRY (edge-discovery self-learning) — validated_edges GATE real aggression;
+    candidate_edges are on PROBATION (passed cost-aware OOS + walk-forward but awaiting fresh-data
+    confirmation before graduating). Honest: 0 validated right now — the firm hunts, never fakes one."""
+    try:
+        from firm.desk_performance import ROOT
+
+        def _rd(name: str) -> dict:
+            fp = ROOT / "data" / name
+            try:
+                return json.loads(fp.read_text()) if fp.exists() else {}
+            except (ValueError, OSError):
+                return {}
+
+        return JSONResponse({"validated": _rd("validated_edges.json"),
+                             "candidate": _rd("candidate_edges.json")})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)[:120]}, status_code=500)
+
+
 _CANDLE_CACHE: dict = {}   # (asset,interval) -> (epoch, payload). Bybit kline is reachable from Amsterdam.
 
 
