@@ -45,7 +45,8 @@ COST_RT = 0.0020
 COOLDOWN_H = 12
 FAIL_BAN_H = 24             # a failed condition is benched 24h then FORGIVEN + re-tried (regime may have
                             #   turned) — bans EXPIRE so the firm can adapt back, never starves permanently
-LEARN_MIN_N = 6             # min realized closes on a condition before its track record steers sizing
+LEARN_MIN_N = 4             # min realized closes on a (condition@regime) before its record steers sizing
+                            #   (=SLOTS_PER_ASSET so the fade engages right when a losing round bans it)
 LEARN_FADE = 0.5            # a condition with a PROVEN-losing realized record trades at half size (learned
                             #   caution that PERSISTS past the 24h ban) — still a probe, so it can re-learn
 MAX_DATA_AGE_H = 12
@@ -438,7 +439,8 @@ def step(log=print) -> dict:
         _exec_close(p, log)
         # LEARN FROM THE OUTCOME: accumulate this condition's REALIZED track record (n / wins / pnl).
         # Every close teaches it — the mistake isn't just benched, it's studied and steers future sizing.
-        rec = s.setdefault("cond_record", {}).setdefault(p["cond"], {"n": 0, "wins": 0, "pnl": 0.0})
+        rkey = f"{p['cond']} @{p.get('regime', 'flat')}"  # regime-aware: learn 'loses in up', not 'always'
+        rec = s.setdefault("cond_record", {}).setdefault(rkey, {"n": 0, "wins": 0, "pnl": 0.0})
         rec["n"] += 1
         rec["wins"] += int(pnl > 0)
         rec["pnl"] = round(rec["pnl"] + pnl, 4)
@@ -525,24 +527,26 @@ def step(log=print) -> dict:
         favors = (trend == "down" and direction == "SHORT") or (trend == "up" and direction == "LONG")
         base = VIRTUAL_FULL if tier == "STRONG" else VIRTUAL_LEAN
         size = base * EDGE_SIZE_MULT if (edge and favors) else base
-        # LEARNED SIZING: fade a condition with a PROVEN-losing realized record (studied from past closes,
-        #   persists past the 24h ban). We DON'T size winners up — that needs a validated edge, not luck.
-        rec = s.get("cond_record", {}).get(cond)
+        # LEARNED SIZING: fade a condition with a PROVEN-losing record IN THIS REGIME (regime-aware: a
+        #   short that bled in an up-market isn't penalised in a down-market). Persists past the 24h ban.
+        #   We DON'T size winners up — that needs a validated edge, not luck.
+        rkey = f"{cond} @{trend}"
+        rec = s.get("cond_record", {}).get(rkey)
         learned = "n/a"
         if rec and rec["n"] >= LEARN_MIN_N:
             avg = rec["pnl"] / rec["n"]
             if avg < 0:
                 size *= LEARN_FADE
-                learned = f"FADE (record {rec['wins']}/{rec['n']} ${rec['pnl']:+.2f})"
+                learned = f"FADE @{trend} (record {rec['wins']}/{rec['n']} ${rec['pnl']:+.2f})"
             else:
-                learned = f"trusted ({rec['wins']}/{rec['n']} ${rec['pnl']:+.2f})"
+                learned = f"trusted @{trend} ({rec['wins']}/{rec['n']} ${rec['pnl']:+.2f})"
         cap_h = HORIZON_EDGE_H if edge else HORIZON_H
         p = {"id": s["opened"] + 1, "asset": a, "dir": direction, "tier": tier,
              "size_usd": size, "edge": edge, "cap_h": cap_h, "best": px, "trail": sl,
              "entry": px, "sl": sl, "tp": tp, "atr_pct": round(atr * 100, 3),
              "sl_pct": round(sl_d * 100, 2), "tp_pct": round(tp_d * 100, 2),
              "t_open": _now(), "utc_open": datetime.now(timezone.utc).isoformat(),
-             "votes": net, "reasons": reasons[:6], "cond": cond, "exit": None}
+             "votes": net, "reasons": reasons[:6], "cond": cond, "regime": trend, "exit": None}
         pos.append(p)
         s["opened"] += 1
         ex_txt = f"EDGE×{EDGE_SIZE_MULT:g} trail/{cap_h}h" if (edge and size > base) else ("EDGE trail" if edge else f"{cap_h}h cap")
