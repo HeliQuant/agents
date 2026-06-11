@@ -428,6 +428,11 @@ def step(log=print) -> dict:
         #    over by the move. Skip an entry the prevailing 1h regime clearly opposes (proxy classifier). ──
         trend = _trend(a)
         if (trend == "up" and direction == "SHORT") or (trend == "down" and direction == "LONG"):
+            s["skips"] = s.get("skips", 0) + 1   # auditable proof the veto fires (surfaced on /campaign)
+            sk = s.setdefault("recent_skips", [])
+            sk.append({"asset": a, "dir": direction, "regime": trend,
+                       "utc": datetime.now(timezone.utc).isoformat()})
+            del sk[:-8]
             log(f"  ⊘ CAMPAIGN SKIP {a} {direction}: counter-trend (regime={trend}) — don't fight the move")
             continue
         tier = "STRONG" if abs(net) >= 2 else "LEAN"
@@ -505,6 +510,7 @@ def status() -> dict:
             "horizon_h": HORIZON_H, **diag,
             "edge_open": len([p for p in open_pos if p.get("edge")]),
             "sized_up_open": len([p for p in open_pos if (p.get("size_usd") or 0) > VIRTUAL_FULL]),
+            "skips": s.get("skips", 0), "recent_skips": s.get("recent_skips", [])[-6:],
             "risk_model": (f"edge-gated · NO-edge: SL {ATR_SL_MULT}×ATR / TP {ATR_TP_MULT}×ATR / {HORIZON_H}h cap · "
                            f"EDGE: trailing {TRAIL_K}×ATR / {HORIZON_EDGE_H}h, regime-favored size ×{EDGE_SIZE_MULT:g}"),
             "open_positions": [_view(p) for p in open_pos],
