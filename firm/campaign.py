@@ -410,22 +410,30 @@ def step(log=print) -> dict:
             s["rounds"][p["asset"]] = {"closed": 0, "pnl": 0.0, "conds": []}
 
     # ── open new (desk-justified only) ──
+    scan: dict = {}   # per-asset: WHY it did/didn't open this step (diagnostic, surfaced on /campaign)
     for a in BASKET:
         if s["opened"] >= TARGET:
-            break
-        if _now() < s["cooldown_until"].get(a, 0):
+            scan[a] = "target reached"
+            continue
+        cd = s["cooldown_until"].get(a, 0) - _now()
+        if cd > 0:
+            scan[a] = f"cooldown {cd / 3600:.1f}h"
             continue
         if len([p for p in pos if p["asset"] == a and p.get("exit") is None]) >= SLOTS_PER_ASSET:
+            scan[a] = "slots full"
             continue
         _refresh_if_stale(a, log=log)  # Amsterdam: Bybit reachable -> the campaign feeds itself
         net, reasons = desk_votes(a)
         if net == 0 or not reasons:
+            scan[a] = "desks flat (no vote)"
             continue  # desks flat -> no coin-flips, even on paper
         cond = _cond_key(a, reasons)
         if _now() < s["failed_conditions"].get(cond, 0):
+            scan[a] = "benched (failed cond)"
             continue  # still benched (ban not yet expired); after FAIL_BAN_H it's forgiven + re-tried
         px = prices.get(a)
         if not px:
+            scan[a] = "no price"
             continue
         direction = "LONG" if net > 0 else "SHORT"
         # ── REGIME ENTRY GATE: don't fight a clear trend. Live diagnosis — every counter-trend short
@@ -438,6 +446,7 @@ def step(log=print) -> dict:
             sk.append({"asset": a, "dir": direction, "regime": trend,
                        "utc": datetime.now(timezone.utc).isoformat()})
             del sk[:-8]
+            scan[a] = f"veto {direction} vs regime {trend}"
             log(f"  ⊘ CAMPAIGN SKIP {a} {direction}: counter-trend (regime={trend}) — don't fight the move")
             continue
         tier = "STRONG" if abs(net) >= 2 else "LEAN"
@@ -466,7 +475,9 @@ def step(log=print) -> dict:
         log(f"  🟢 CAMPAIGN OPEN #{p['id']} {direction} {a} @ {px} {tier} ${size:g} [{ex_txt}] (net {net:+}) "
             f"SL {sl} (−{sl_d*100:.1f}%) · TP {tp} (+{tp_d*100:.1f}%) · ATR {atr*100:.2f}% — {'; '.join(reasons[:2])}")
         _exec_open(p, log)  # LONGs become REAL Bybit TESTNET spot fills when CAMPAIGN_EXECUTE=1
+        scan[a] = f"OPENED {direction} {tier}"
 
+    s["last_scan"] = scan  # why each asset did/didn't open this step (surfaced on /campaign)
     open_now = len([p for p in pos if p.get("exit") is None])
     if s["opened"] >= TARGET and open_now == 0:
         s["done"] = True
@@ -518,6 +529,7 @@ def status() -> dict:
             "edge_open": len([p for p in open_pos if p.get("edge")]),
             "sized_up_open": len([p for p in open_pos if (p.get("size_usd") or 0) > VIRTUAL_FULL]),
             "skips": s.get("skips", 0), "recent_skips": s.get("recent_skips", [])[-6:],
+            "last_scan": s.get("last_scan", {}),  # per-asset reason it did/didn't open last step
             "risk_model": (f"edge-gated · NO-edge: SL {ATR_SL_MULT}×ATR / TP {ATR_TP_MULT}×ATR / {HORIZON_H}h cap · "
                            f"EDGE: trailing {TRAIL_K}×ATR / {HORIZON_EDGE_H}h, regime-favored size ×{EDGE_SIZE_MULT:g}"),
             "open_positions": [_view(p) for p in open_pos],
