@@ -514,6 +514,12 @@ def step(log=print) -> dict:
             flipped = True
             scan[a] = f"veto contrarian -> trend-follow {direction}"
             log(f"  ↪ CAMPAIGN FLIP {a}: contrarian vetoed (regime {trend}) -> trend-follow {direction} (exploration)")
+        # don't STACK an identical bet — at most one OPEN position per (asset, cond) at a time (cond
+        # encodes direction). Stops 3 same-signal MNT longs concentrating into a single call; a new one
+        # can open once the prior closes. Diversification over doubling-down (no edge to justify scaling).
+        if any(op["asset"] == a and op.get("exit") is None and op.get("cond") == cond for op in pos):
+            scan[a] = "already open (same signal)"
+            continue
         tier = "LEAN" if flipped else ("STRONG" if abs(net) >= 2 else "LEAN")
         atr = _atr_pct(a)
         sl_d, tp_d = ATR_SL_MULT * atr, ATR_TP_MULT * atr
