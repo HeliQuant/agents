@@ -201,6 +201,18 @@ def _loop() -> None:
 
 app = FastAPI(title="HeliQuant")
 
+# CORS: the dApp (heliquant.vercel.app) fetches these endpoints from the BROWSER (cross-origin). All
+# routes are public, read-only GETs with no cookies/auth, so allow any origin — without this the
+# browser blocks the fetch and the FE shows "floor unreachable" even though the API is up.
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "HEAD", "OPTIONS"],
+    allow_headers=["*"],
+)
+
 
 def _restore_positioning() -> None:
     """On boot, pull the latest positioning CSVs from Supabase (ephemeral FS loses the /ingest-fed ones on
