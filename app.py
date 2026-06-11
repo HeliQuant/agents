@@ -305,6 +305,68 @@ def trades(limit: int = 120):
         return JSONResponse({"error": str(e)[:120], "trades": []}, status_code=500)
 
 
+_AGENTS_CACHE: dict = {}
+
+
+def _agent_reps(reg: dict) -> dict:
+    """On-chain reputation per agent tokenId (getReputation), read live from Mantle. Cached ~120s.
+    Empty/zero until recordJobOutcome runs — honest (reputation accrues forward)."""
+    hit = _AGENTS_CACHE.get("reps")
+    if hit and time.time() - hit[0] < 120:
+        return hit[1]
+    out: dict = {}
+    try:
+        from pathlib import Path
+
+        from web3 import Web3
+
+        from firm.onchain_recorder import MANTLE_SEPOLIA_RPC, _env
+        abi = json.loads((Path(__file__).resolve().parent.parent / "contracts" / "out"
+                          / "ReputationRegistry.sol" / "ReputationRegistry.json").read_text())["abi"]
+        w3 = Web3(Web3.HTTPProvider(_env("MANTLE_SEPOLIA_RPC_URL") or MANTLE_SEPOLIA_RPC, request_kwargs={"timeout": 10}))
+        c = w3.eth.contract(address=Web3.to_checksum_address(reg["reputation"]), abi=abi)
+        ids = [reg.get("firm", {}).get("tokenId")] + [d.get("tokenId") for d in (reg.get("desks") or {}).values()]
+        for tid in [i for i in ids if i is not None]:
+            try:
+                r = c.functions.getReputation(int(tid)).call()
+                out[str(tid)] = {"total_jobs": int(r[0]), "successful_jobs": int(r[1]), "cum_pnl": int(r[2])}
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception:  # noqa: BLE001
+        pass
+    _AGENTS_CACHE["reps"] = (time.time(), out)
+    return out
+
+
+@app.get("/agents")
+def agents():
+    """THE AGENT ROSTER — the firm + 9 desks as ERC-8004 on-chain identities (IdentityRegistry). Each
+    agent's tokenId, kind, ml flag, role + its live ON-CHAIN reputation, plus the off-chain
+    desk_performance reliability weight for cross-reference. Honest: reputation accrues forward."""
+    try:
+        from pathlib import Path
+        reg_fp = Path(__file__).resolve().parent / "data" / "agent_registry.json"
+        if not reg_fp.exists():
+            return JSONResponse({"agents": [], "error": "agents not registered yet"})
+        reg = json.loads(reg_fp.read_text())
+        try:
+            from firm.desk_performance import load_weights
+            weights = load_weights()
+        except Exception:  # noqa: BLE001
+            weights = {}
+        reps = _agent_reps(reg)
+        firm = reg.get("firm", {})
+        out = [{"name": "HeliQuant", "kind": "Firm", "tokenId": firm.get("tokenId"), "ml": False,
+                "role": "autonomous multi-desk AI trading firm", "reputation": reps.get(str(firm.get("tokenId")))}]
+        for name, d in (reg.get("desks") or {}).items():
+            out.append({"name": name, "kind": d.get("kind"), "tokenId": d.get("tokenId"), "ml": d.get("ml", False),
+                        "weight": weights.get(name), "reputation": reps.get(str(d.get("tokenId")))})
+        return JSONResponse({"agents": out, "identity": reg.get("identity"),
+                             "explorer": reg.get("explorer", "https://sepolia.mantlescan.xyz")})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"agents": [], "error": str(e)[:120]}, status_code=200)
+
+
 @app.get("/desks")
 def desks():
     """DESK RELIABILITY (strategic self-learning) — each of the 9 desks earns a weight 0.6-1.4 by
