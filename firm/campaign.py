@@ -449,16 +449,27 @@ def step(log=print) -> dict:
         #    bled (-1.3..-3.3%) while trend-aligned longs won; the contrarian desk vote was getting run
         #    over by the move. Skip an entry the prevailing 1h regime clearly opposes (proxy classifier). ──
         trend = _trend(a)
+        flipped = False
         if (trend == "up" and direction == "SHORT") or (trend == "down" and direction == "LONG"):
-            s["skips"] = s.get("skips", 0) + 1   # auditable proof the veto fires (surfaced on /campaign)
+            # Contrarian wants to FIGHT the trend. Veto that side — but rather than go dormant, take the
+            # TREND-ALIGNED side as exploration (trend-aligned longs won live; cond_record fades it if it
+            # bleeds, cooldown cools it). Keeps the floor active in trends instead of locked, and feeds
+            # the learning loop which judges whether trend-following pays per asset.
+            s["skips"] = s.get("skips", 0) + 1
             sk = s.setdefault("recent_skips", [])
             sk.append({"asset": a, "dir": direction, "regime": trend,
                        "utc": datetime.now(timezone.utc).isoformat()})
             del sk[:-8]
-            scan[a] = f"veto {direction} vs regime {trend}"
-            log(f"  ⊘ CAMPAIGN SKIP {a} {direction}: counter-trend (regime={trend}) — don't fight the move")
-            continue
-        tier = "STRONG" if abs(net) >= 2 else "LEAN"
+            direction = "LONG" if trend == "up" else "SHORT"
+            reasons = [f"trend-follow:{trend}"]
+            cond = _cond_key(a, reasons)
+            if _now() < s["failed_conditions"].get(cond, 0):
+                scan[a] = "veto->trend benched"
+                continue
+            flipped = True
+            scan[a] = f"veto contrarian -> trend-follow {direction}"
+            log(f"  ↪ CAMPAIGN FLIP {a}: contrarian vetoed (regime {trend}) -> trend-follow {direction} (exploration)")
+        tier = "LEAN" if flipped else ("STRONG" if abs(net) >= 2 else "LEAN")
         atr = _atr_pct(a)
         sl_d, tp_d = ATR_SL_MULT * atr, ATR_TP_MULT * atr
         sgn = 1 if direction == "LONG" else -1
