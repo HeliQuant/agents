@@ -1,16 +1,17 @@
 {
   "HYPE": {
-    "edge": "flow_contrarian",
+    "edge": "oi_contrarian",
     "asset": "HYPE",
     "validated": false,
-    "p_win": 0.5088,
-    "payoff_b": 1.646,
-    "sample_n": 114,
-    "oos_roi_pct": 142.66,
-    "note": "flow_contrarian via edge_lab onboarding (non-overlap 24h, cost-aware OOS, 4/5 walk-forward folds +ve). avg 87.3bps > 11.0bps fee; sample 114. CANDIDATE (ROBUST) \u2014 awaiting scripts/60 NEW-DATA confirmation before live.",
+    "horizon_h": 48,
+    "p_win": 0.4865,
+    "payoff_b": 2.009,
+    "sample_n": 37,
+    "oos_roi_pct": 78.02,
+    "pval": 0.1254,
     "tier": "candidate",
-    "confirmations": 1,
-    "last_confirm_bar": "2026-06-04 10:00:00+00:00"
+    "confirmations": 0,
+    "note": "oi_contrarian @48h, surfaced by the deep multi-horizon hunt (scripts/93): cost-aware OOS +78%, walk-forward 4/5 folds +ve, ex-best mean +8.2% (outlier-robust), STABLE across 80/90/100% cutoffs. The edge is payoff-asymmetry (48.6% win, payoff 2.0 \u2014 wins 2x losers), not hit-rate, so pval is 0.125. PROBATION: 48h horizon (non-standard vs the 24h registry), and HYPE's PRIOR flow_contrarian candidate DECAYED on new data (#26) \u2014 must confirm on FRESH data before graduating to validated + earning aggression. Replaces the decayed flow_contrarian entry."
   },
   "SEI": {
     "edge": "funding_fade",
