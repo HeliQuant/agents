@@ -559,6 +559,7 @@ def step(log=print) -> dict:
     open_now = len([p for p in pos if p.get("exit") is None])
     s["done"] = False  # never completes — continuous autonomous floor
     s["last_step_utc"] = datetime.now(timezone.utc).isoformat()  # heartbeat: proves the step actually runs
+    _anchor_closed(pos, log)  # seal each resolved trade on Mantle (best-effort; gated by CAMPAIGN_ANCHOR)
     _save(s, pos, log)
     try:  # readback verify — proves sl/tp actually persisted (diagnoses the not-showing issue)
         from firm import state_store
@@ -570,6 +571,32 @@ def step(log=print) -> dict:
     return {**s, "open_now": open_now}
 
 
+ANCHOR_PER_STEP = 12   # cap on-chain anchors per step (bounds gas + step latency)
+
+
+def _anchor_closed(pos: list, log=print) -> None:
+    """Seal RESOLVED trades on Mantle Sepolia — one 0-value self-send per trade carrying its outcome
+    hash. Backfills any closed trade without an anchor yet (bounded per step). Gated by CAMPAIGN_ANCHOR
+    (default ON; set 0 to disable). Best-effort — never blocks or fails the paper close."""
+    if os.environ.get("CAMPAIGN_ANCHOR", "1") == "0":
+        return
+    todo = [p for p in pos if p.get("exit") is not None and not p.get("anchor_tx")][:ANCHOR_PER_STEP]
+    if not todo:
+        return
+    try:
+        from firm.onchain_recorder import batch_anchor, canonical_trade
+        res = batch_anchor([canonical_trade(p) for p in todo])
+        by_id = {r["id"]: r for r in res}
+        for p in todo:
+            r = by_id.get(p["id"])
+            if r:
+                p["anchor_tx"] = r["tx_hash"]
+        if res:
+            log(f"  [campaign] anchored {len(res)} trade(s) on Mantle · latest {res[-1]['tx_hash'][:14]}...")
+    except Exception as e:  # noqa: BLE001
+        log(f"  [campaign] anchor skipped ({str(e)[:60]})")
+
+
 def trade_log(limit: int = 120) -> dict:
     """The TRADE LEDGER — every RESOLVED campaign trade with its full data (newest first). These are
     paper trades at live prices (real fills happen on Bybit testnet when CAMPAIGN_EXECUTE=1); the
@@ -578,7 +605,7 @@ def trade_log(limit: int = 120) -> dict:
     closed = [p for p in pos if p.get("exit") is not None]
     rows = [{k: p.get(k) for k in ("id", "asset", "dir", "tier", "entry", "exit", "exit_reason",
                                    "net_pct", "pnl_usd", "size_usd", "regime", "reasons",
-                                   "utc_open", "utc_close")}
+                                   "utc_open", "utc_close", "anchor_tx")}
              for p in closed[-limit:]][::-1]
     wins = sum(1 for p in closed if (p.get("pnl_usd") or 0) > 0)
     return {"count": len(closed), "wins": wins,

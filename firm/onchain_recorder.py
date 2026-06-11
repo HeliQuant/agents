@@ -74,6 +74,58 @@ def anchor(decision: dict, ticker: str, ts: str, *, send: bool = False) -> dict:
     return out
 
 
+def canonical_trade(trade: dict) -> dict:
+    """Compact, deterministic snapshot of a RESOLVED campaign trade to seal on-chain (the outcome,
+    not the paper fill mechanics)."""
+    return {"id": trade.get("id"), "asset": trade.get("asset"), "dir": trade.get("dir"),
+            "tier": trade.get("tier"), "entry": trade.get("entry"), "exit": trade.get("exit"),
+            "exit_reason": trade.get("exit_reason"), "net_pct": trade.get("net_pct"),
+            "pnl_usd": trade.get("pnl_usd"), "ts": trade.get("utc_close")}
+
+
+def batch_anchor(records: list[dict]) -> list[dict]:
+    """Seal a batch of records on-chain in ONE nonce-managed sweep (no wait for receipts — fast). Each
+    record → a 0-value self-send carrying its SHA-256 in calldata. Returns [{id, tx_hash, explorer}] for
+    those sent. Best-effort: returns [] on any setup failure (web3 missing / no key / RPC down), and
+    stops at the first send error to avoid a nonce gap — callers must treat anchoring as non-critical."""
+    if not records:
+        return []
+    try:
+        from eth_account import Account
+        from web3 import Web3
+    except ImportError:
+        return []
+    pk = _env("EXECUTOR_PRIVATE_KEY") or _env("DEPLOYER_PRIVATE_KEY")
+    if not pk:
+        return []
+    rpc = _env("MANTLE_SEPOLIA_RPC_URL") or MANTLE_SEPOLIA_RPC
+    try:
+        w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={"timeout": 12}))
+        if not w3.is_connected():
+            return []
+        acct = Account.from_key(pk)
+        nonce = w3.eth.get_transaction_count(acct.address)
+        gp = w3.eth.gas_price
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[dict] = []
+    for rec in records:
+        try:
+            h = record_hash(rec)
+            tx = {"chainId": CHAIN_ID, "from": acct.address, "to": acct.address, "value": 0,
+                  "nonce": nonce, "gas": 30000, "gasPrice": gp, "data": h}
+            signed = acct.sign_transaction(tx)
+            raw = getattr(signed, "raw_transaction", None) or getattr(signed, "rawTransaction", None)
+            txh = w3.eth.send_raw_transaction(raw).hex()
+            txh = txh if txh.startswith("0x") else "0x" + txh
+            out.append({"id": rec.get("id"), "tx_hash": txh,
+                        "explorer": f"https://sepolia.mantlescan.xyz/tx/{txh}"})
+            nonce += 1
+        except Exception:  # noqa: BLE001
+            break  # stop on first failure — earlier sends stand, no nonce gap
+    return out
+
+
 def _send_hash_tx(h: str) -> dict:
     """Broadcast a 0-value self-tx carrying hash `h` as calldata on Mantle Sepolia (the proven, safe
     anchoring primitive). Returns {sent, tx_hash, from_address, explorer} or {error}. Testnet only."""
