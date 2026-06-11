@@ -34,7 +34,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BYBIT = "https://api.bybit.com"
 
 BASKET = ["MNT", "BTC", "ETH", "SOL", "HYPE", "SUI"]
-TARGET = 100
+TARGET = 1000              # the floor is a CONTINUOUS exploration engine — the first 100 was the proof;
+                           #   keep it running (and learning) instead of freezing 'done' at 100
 SLOTS_PER_ASSET = 4
 HORIZON_H = 4               # no-edge max hold: time-exit if neither SL nor TP is hit first
 HORIZON_EDGE_H = 24         # EDGE assets let winners run far longer (backtested: trail+long-cap pays only WITH edge)
