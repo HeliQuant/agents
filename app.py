@@ -281,6 +281,32 @@ def campaign_status():
         return JSONResponse({"error": str(e)[:120]}, status_code=500)
 
 
+_CANDLE_CACHE: dict = {}   # (asset,interval) -> (epoch, payload). Bybit kline is reachable from Amsterdam.
+
+
+@app.get("/candles")
+def candles(asset: str = "BTC", interval: str = "60", limit: int = 120):
+    """Recent OHLC candles for an asset (Bybit linear perp, served from the Amsterdam region so any
+    viewer gets them regardless of their own geo). Cached ~45s. Feeds the live-floor candlestick that
+    shows each open campaign position against its entry / SL / TP."""
+    import requests
+    key = (asset.upper(), interval)
+    hit = _CANDLE_CACHE.get(key)
+    if hit and time.time() - hit[0] < 45:
+        return JSONResponse(hit[1])
+    try:
+        r = requests.get("https://api.bybit.com/v5/market/kline",
+                         params={"category": "linear", "symbol": f"{asset.upper()}USDT",
+                                 "interval": interval, "limit": str(min(max(limit, 10), 200))}, timeout=12).json()
+        rows = list(reversed(r["result"]["list"]))  # Bybit returns newest-first -> oldest-first
+        out = [{"t": int(x[0]), "o": float(x[1]), "h": float(x[2]), "l": float(x[3]), "c": float(x[4])} for x in rows]
+        payload = {"asset": asset.upper(), "interval": interval, "candles": out}
+        _CANDLE_CACHE[key] = (time.time(), payload)
+        return JSONResponse(payload)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"asset": asset.upper(), "interval": interval, "candles": [], "error": str(e)[:120]})
+
+
 @app.get("/carry")
 def carry():
     """Current carry desk reads — delta-neutral funding carry per symbol, from the locally-pushed cache
