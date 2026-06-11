@@ -330,6 +330,47 @@ def edges():
         return JSONResponse({"error": str(e)[:120]}, status_code=500)
 
 
+_ONCHAIN_CACHE: dict = {}   # wallet -> (epoch, payload). Etherscan v2 is rate-limited; cache ~60s.
+FIRM_WALLET = "0x48379F4d1427209311E9FF0bcC4a354953ea631B"  # public anchor wallet (Mantle Sepolia)
+
+
+@app.get("/onchain")
+def onchain(wallet: str = "", limit: int = 40):
+    """THE ON-CHAIN LEDGER — the firm's decision-anchor transactions, fetched LIVE from Etherscan v2
+    (Mantle Sepolia, chainid 5003). Each anchor seals a decision's SHA-256 in a self-send tx's
+    calldata — verifiable on Mantlescan, not a claim. Wallet is public; the Mantlescan API key stays
+    server-side. Pass ?wallet=0x.. to inspect any address (BYO/modular). Cached ~60s."""
+    import re
+
+    import requests
+    from firm.onchain_recorder import CHAIN_ID, _env
+    addr = wallet.strip() or FIRM_WALLET
+    if not re.fullmatch(r"0x[0-9a-fA-F]{40}", addr):
+        return JSONResponse({"error": "bad address", "txs": []}, status_code=400)
+    hit = _ONCHAIN_CACHE.get(addr.lower())
+    if hit and time.time() - hit[0] < 60:
+        return JSONResponse(hit[1])
+    key = _env("MANTLESCAN_API_KEY") or ""
+    try:
+        r = requests.get("https://api.etherscan.io/v2/api", timeout=15, params={
+            "chainid": CHAIN_ID, "module": "account", "action": "txlist", "address": addr,
+            "startblock": 0, "endblock": 99999999, "sort": "desc", "apikey": key}).json()
+        rows = r.get("result") if isinstance(r.get("result"), list) else []
+        txs = [{"hash": t["hash"], "block": int(t["blockNumber"]), "ts": int(t["timeStamp"]),
+                "to": t.get("to", ""), "from": t.get("from", ""), "value": t.get("value", "0"),
+                "method": t.get("methodId", "0x"), "is_error": t.get("isError", "0") == "1",
+                "self_anchor": t.get("to", "").lower() == addr.lower() and t.get("from", "").lower() == addr.lower()}
+               for t in rows[:max(1, min(limit, 100))]]
+        payload = {"wallet": addr, "chain": "Mantle Sepolia", "chain_id": CHAIN_ID,
+                   "explorer": "https://sepolia.mantlescan.xyz", "total": len(rows), "txs": txs,
+                   "configured": bool(key)}
+        _ONCHAIN_CACHE[addr.lower()] = (time.time(), payload)
+        return JSONResponse(payload)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"wallet": addr, "txs": [], "error": str(e)[:120],
+                             "configured": bool(key)}, status_code=200)
+
+
 _CANDLE_CACHE: dict = {}   # (asset,interval) -> (epoch, payload). Bybit kline is reachable from Amsterdam.
 
 
