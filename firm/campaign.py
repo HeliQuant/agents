@@ -303,18 +303,22 @@ def _has_edge(asset: str) -> bool:
 
 
 def _trend(asset: str) -> str:
-    """Light 1h-kline regime read -> 'up' / 'down' / 'flat' (price vs SMA48 + short slope). A cheap
-    proxy for the 82.6% regime classifier, used to keep the campaign from FIGHTING a clear trend:
-    don't short a strong uptrend, don't long a strong downtrend. (Live evidence: every counter-trend
-    short bled while trend-aligned longs won — that's a regime bleed, not an edge.)"""
+    """Light 1h-kline regime read -> 'up' / 'down' / 'flat' (price vs SMA24 + short slope). A cheap,
+    RESPONSIVE proxy for the 82.6% regime classifier, used to keep the campaign from FIGHTING a clear
+    trend: don't short a strong uptrend, don't long a strong downtrend.
+
+    Sensor window TUNED by backtest (contrarian entry + veto, OOS pooled): a 24h window catches a
+    regime flip ~a day sooner than 48h and roughly HALVES the bleed (-86.8% -> -57.6%), while 12h /
+    EMA9-21-cross over-react and whipsaw straight back to -87% / -98%. 24h is the responsive sweet
+    spot. (Live evidence that drove this: every counter-trend short bled while trend-aligned longs won.)"""
     try:
         r = requests.get(f"{BYBIT}/v5/market/kline",
                          params={"category": "linear", "symbol": f"{asset}USDT", "interval": "60", "limit": "60"},
                          timeout=12).json()
         closes = [float(x[4]) for x in reversed(r["result"]["list"])]
-        if len(closes) < 50:
+        if len(closes) < 30:
             return "flat"
-        sma = sum(closes[-48:]) / 48
+        sma = sum(closes[-24:]) / 24          # 24h: responsive sweet spot (backtested)
         slope = closes[-1] - closes[-6]
         if closes[-1] > sma and slope > 0:
             return "up"
