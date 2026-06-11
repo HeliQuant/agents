@@ -586,7 +586,8 @@ def _anchor_closed(pos: list, log=print) -> None:
     (default ON; set 0 to disable). Best-effort — never blocks or fails the paper close."""
     if os.environ.get("CAMPAIGN_ANCHOR", "1") == "0":
         return
-    todo = [p for p in pos if p.get("exit") is not None and not p.get("anchor_tx")][:ANCHOR_PER_STEP]
+    # newest-first: the trades shown at the top of /ledger get their tx first (then backfill older)
+    todo = [p for p in reversed(pos) if p.get("exit") is not None and not p.get("anchor_tx")][:ANCHOR_PER_STEP]
     if not todo:
         return
     try:
