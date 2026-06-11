@@ -293,6 +293,18 @@ def campaign_status():
         return JSONResponse({"error": str(e)[:120]}, status_code=500)
 
 
+@app.get("/trades")
+def trades(limit: int = 120):
+    """THE TRADE LEDGER — every resolved campaign trade with its full data (entry/exit/PnL/exit-reason/
+    desk-votes). Honest: these are paper trades at live prices (real fills on Bybit testnet when armed);
+    the chain anchors the DECISIONS, not each paper fill."""
+    try:
+        from firm.campaign import trade_log
+        return JSONResponse(trade_log(limit))
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)[:120], "trades": []}, status_code=500)
+
+
 @app.get("/desks")
 def desks():
     """DESK RELIABILITY (strategic self-learning) — each of the 9 desks earns a weight 0.6-1.4 by

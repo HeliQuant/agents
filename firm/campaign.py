@@ -570,6 +570,23 @@ def step(log=print) -> dict:
     return {**s, "open_now": open_now}
 
 
+def trade_log(limit: int = 120) -> dict:
+    """The TRADE LEDGER — every RESOLVED campaign trade with its full data (newest first). These are
+    paper trades at live prices (real fills happen on Bybit testnet when CAMPAIGN_EXECUTE=1); the
+    on-chain layer anchors the DECISIONS, not each paper fill — so this is labelled honestly off-chain."""
+    s, pos = _load()
+    closed = [p for p in pos if p.get("exit") is not None]
+    rows = [{k: p.get(k) for k in ("id", "asset", "dir", "tier", "entry", "exit", "exit_reason",
+                                   "net_pct", "pnl_usd", "size_usd", "regime", "reasons",
+                                   "utc_open", "utc_close")}
+             for p in closed[-limit:]][::-1]
+    wins = sum(1 for p in closed if (p.get("pnl_usd") or 0) > 0)
+    return {"count": len(closed), "wins": wins,
+            "win_pct": round(100 * wins / len(closed), 1) if closed else 0.0,
+            "net_usd": round(s.get("net_usd", 0.0), 4),
+            "open_now": len([p for p in pos if p.get("exit") is None]), "trades": rows}
+
+
 def status() -> dict:
     s, pos = _load()
     open_pos = [p for p in pos if p.get("exit") is None]
