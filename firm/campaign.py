@@ -434,8 +434,16 @@ def step(log=print) -> dict:
         _refresh_if_stale(a, log=log)  # Amsterdam: Bybit reachable -> the campaign feeds itself
         net, reasons = desk_votes(a)
         if net == 0 or not reasons:
-            scan[a] = "desks flat (no vote)"
-            continue  # desks flat -> no coin-flips, even on paper
+            # desks flat (no positioning extreme fired). If the REGIME is clear, ride it as trend-follow
+            # exploration (the regime itself is the thesis) — keeps the floor working between extremes.
+            # Still NOT a coin-flip: a flat regime stays skipped, and the loop fades it if it bleeds.
+            t = _trend(a)
+            if t in ("up", "down"):
+                net = 1 if t == "up" else -1
+                reasons = [f"trend-follow:{t}"]
+            else:
+                scan[a] = "desks flat + regime flat"
+                continue
         cond = _cond_key(a, reasons)
         if _now() < s["failed_conditions"].get(cond, 0):
             scan[a] = "benched (failed cond)"
