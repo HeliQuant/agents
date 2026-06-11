@@ -278,14 +278,22 @@ def _mantle_lean() -> tuple[int, str]:
             return 0, ""
         c7, c30 = t.get("chg7d_pct", 0.0), t.get("chg30d_pct", 0.0)
         if c7 > 1:
-            return 1, f"mantle-tvl:+{c7:.0f}%/7d->L"
-        if c7 < -1:
-            return -1, f"mantle-tvl:{c7:.0f}%/7d->S"
-        if c30 > 5:
-            return 1, f"mantle-tvl:+{c30:.0f}%/30d->L"
-        if c30 < -5:
-            return -1, f"mantle-tvl:{c30:.0f}%/30d->S"
-        return 0, ""
+            lean, why = 1, f"mantle-tvl:+{c7:.0f}%/7d->L"
+        elif c7 < -1:
+            lean, why = -1, f"mantle-tvl:{c7:.0f}%/7d->S"
+        elif c30 > 5:
+            lean, why = 1, f"mantle-tvl:+{c30:.0f}%/30d->L"
+        elif c30 < -5:
+            lean, why = -1, f"mantle-tvl:{c30:.0f}%/30d->S"
+        else:
+            return 0, ""
+        # CONFLUENCE: TVL is a slow FUNDAMENTAL read, not a 4h price predictor. Only act when price
+        # agrees with it — never short MNT into a rising price just because TVL fell (that's what
+        # jebol'd the flagship). If price contradicts, defer (the trend-follow path then rides price).
+        pt = _trend("MNT")
+        if (lean < 0 and pt == "up") or (lean > 0 and pt == "down"):
+            return 0, ""
+        return lean, why
     except Exception:  # noqa: BLE001
         return 0, ""
 
