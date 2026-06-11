@@ -1,0 +1,56 @@
+{
+  "firm": {
+    "tokenId": 2
+  },
+  "desks": {
+    "Regime/Technical": {
+      "tokenId": 3,
+      "kind": "Signal",
+      "ml": true
+    },
+    "Macro (Allora)": {
+      "tokenId": 4,
+      "kind": "Signal",
+      "ml": false
+    },
+    "On-chain/Risk": {
+      "tokenId": 5,
+      "kind": "Risk",
+      "ml": false
+    },
+    "Research": {
+      "tokenId": 6,
+      "kind": "Research",
+      "ml": false
+    },
+    "Smart-Money Flow": {
+      "tokenId": 7,
+      "kind": "Signal",
+      "ml": false
+    },
+    "Smart-Social": {
+      "tokenId": 8,
+      "kind": "Research",
+      "ml": false
+    },
+    "OI-Contrarian": {
+      "tokenId": 9,
+      "kind": "Signal",
+      "ml": false
+    },
+    "flow-intel": {
+      "tokenId": 10,
+      "kind": "Signal",
+      "ml": false
+    },
+    "whale": {
+      "tokenId": 11,
+      "kind": "Signal",
+      "ml": false
+    }
+  },
+  "identity": "0x0fae6342195fdC0007b94fb3293bF56463C55ff3",
+  "reputation": "0x5a18F8D33d551666233701025754274DCA9b2929",
+  "validation": "0x8e55E41dC9a93E30AAf580dba0b3Ee6b34e14A1b",
+  "explorer": "https://sepolia.mantlescan.xyz"
+}
