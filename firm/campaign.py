@@ -44,6 +44,9 @@ COST_RT = 0.0020
 COOLDOWN_H = 12
 FAIL_BAN_H = 24             # a failed condition is benched 24h then FORGIVEN + re-tried (regime may have
                             #   turned) — bans EXPIRE so the firm can adapt back, never starves permanently
+LEARN_MIN_N = 6             # min realized closes on a condition before its track record steers sizing
+LEARN_FADE = 0.5            # a condition with a PROVEN-losing realized record trades at half size (learned
+                            #   caution that PERSISTS past the 24h ban) — still a probe, so it can re-learn
 MAX_DATA_AGE_H = 12
 ATR_TP_MULT = 2.5           # take-profit at 2.5x the 1h ATR (reachable within the 4h horizon if it trends)
 ATR_SL_MULT = 1.8           # stop-loss at 1.8x ATR -> R:R ~1.4, both sized to the asset's real volatility
@@ -397,6 +400,12 @@ def step(log=print) -> dict:
         log(f"  {'🟩' if pnl > 0 else '🟥'}{icon} CAMPAIGN CLOSE #{p['id']} {p['dir']} {p['asset']} {reason} "
             f"{p['net_pct']:+.2f}% (${pnl:+.2f}) | total ${s['net_usd']:+.2f}")
         _exec_close(p, log)
+        # LEARN FROM THE OUTCOME: accumulate this condition's REALIZED track record (n / wins / pnl).
+        # Every close teaches it — the mistake isn't just benched, it's studied and steers future sizing.
+        rec = s.setdefault("cond_record", {}).setdefault(p["cond"], {"n": 0, "wins": 0, "pnl": 0.0})
+        rec["n"] += 1
+        rec["wins"] += int(pnl > 0)
+        rec["pnl"] = round(rec["pnl"] + pnl, 4)
         r = s["rounds"].setdefault(p["asset"], {"closed": 0, "pnl": 0.0, "conds": []})
         r["closed"] += 1
         r["pnl"] = round(r["pnl"] + pnl, 4)
@@ -462,6 +471,17 @@ def step(log=print) -> dict:
         favors = (trend == "down" and direction == "SHORT") or (trend == "up" and direction == "LONG")
         base = VIRTUAL_FULL if tier == "STRONG" else VIRTUAL_LEAN
         size = base * EDGE_SIZE_MULT if (edge and favors) else base
+        # LEARNED SIZING: fade a condition with a PROVEN-losing realized record (studied from past closes,
+        #   persists past the 24h ban). We DON'T size winners up — that needs a validated edge, not luck.
+        rec = s.get("cond_record", {}).get(cond)
+        learned = "n/a"
+        if rec and rec["n"] >= LEARN_MIN_N:
+            avg = rec["pnl"] / rec["n"]
+            if avg < 0:
+                size *= LEARN_FADE
+                learned = f"FADE (record {rec['wins']}/{rec['n']} ${rec['pnl']:+.2f})"
+            else:
+                learned = f"trusted ({rec['wins']}/{rec['n']} ${rec['pnl']:+.2f})"
         cap_h = HORIZON_EDGE_H if edge else HORIZON_H
         p = {"id": s["opened"] + 1, "asset": a, "dir": direction, "tier": tier,
              "size_usd": size, "edge": edge, "cap_h": cap_h, "best": px, "trail": sl,
@@ -473,9 +493,9 @@ def step(log=print) -> dict:
         s["opened"] += 1
         ex_txt = f"EDGE×{EDGE_SIZE_MULT:g} trail/{cap_h}h" if (edge and size > base) else ("EDGE trail" if edge else f"{cap_h}h cap")
         log(f"  🟢 CAMPAIGN OPEN #{p['id']} {direction} {a} @ {px} {tier} ${size:g} [{ex_txt}] (net {net:+}) "
-            f"SL {sl} (−{sl_d*100:.1f}%) · TP {tp} (+{tp_d*100:.1f}%) · ATR {atr*100:.2f}% — {'; '.join(reasons[:2])}")
+            f"SL {sl} (−{sl_d*100:.1f}%) · TP {tp} (+{tp_d*100:.1f}%) · ATR {atr*100:.2f}% · learned:{learned} — {'; '.join(reasons[:2])}")
         _exec_open(p, log)  # LONGs become REAL Bybit TESTNET spot fills when CAMPAIGN_EXECUTE=1
-        scan[a] = f"OPENED {direction} {tier}"
+        scan[a] = f"OPENED {direction} {tier}" + (f" · {learned}" if learned != "n/a" else "")
 
     s["last_scan"] = scan  # why each asset did/didn't open this step (surfaced on /campaign)
     open_now = len([p for p in pos if p.get("exit") is None])
@@ -504,9 +524,13 @@ def status() -> dict:
     by_reason = {r: len([p for p in closed if p.get("exit_reason") == r]) for r in ("TP", "SL", "TIME", "TRAIL")}
     from firm import state_store  # diagnostics: is the step alive, and do writes actually persist?
     save_err = state_store.LAST_SAVE_ERR.get("campaign_pos", "")
+    cr = s.get("cond_record", {})
+    learned = {"tracked": len(cr),
+               "faded": len([1 for v in cr.values() if v["n"] >= LEARN_MIN_N and v["pnl"] < 0]),
+               "records": sorted(({"cond": c, **v} for c, v in cr.items()), key=lambda x: x["pnl"])[:6]}
     diag = {"campaign_on": os.environ.get("CAMPAIGN", "1") == "1",
             "last_step_utc": s.get("last_step_utc"),
-            "persist": "local" if save_err else "supabase", "save_err": save_err}
+            "persist": "local" if save_err else "supabase", "save_err": save_err, "learned": learned}
     prices = live_prices() if open_pos else {}   # one batched mark so the FE can place each car live
 
     def _view(p: dict) -> dict:
