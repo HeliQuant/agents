@@ -139,6 +139,13 @@ def cycle() -> None:
             STATE["decisions"].appendleft({"utc": datetime.now(timezone.utc).isoformat(), "asset": asset,
                                            "decision": d, "direction": dec.get("direction"),
                                            "reason": str(dec.get("reasoning") or dec.get("ticket_note") or "")[:240]})
+            try:  # seal each desk's output on Mantle (ERC-8004 ValidationRegistry; gated by AGENT_ONCHAIN)
+                from firm.agent_onchain import record_outputs
+                recs = record_outputs(res.get("analysts", {}), asset, STATE["cycles"])
+                if recs:
+                    log(f"  [onchain] sealed {len(recs)} desk output(s) on Mantle · {recs[-1]['tx'][:14]}...")
+            except Exception as e:  # noqa: BLE001
+                log(f"  [onchain] seal skipped ({str(e)[:60]})")
             if EXECUTE and d == "ENTER" and str(dec.get("direction", "")).upper() == "LONG" \
                     and (dec.get("trade_ticket") or {}).get("valid"):
                 log(f"  >> EXECUTE enabled + firm ENTER LONG -> (live order path)")
@@ -309,8 +316,9 @@ _AGENTS_CACHE: dict = {}
 
 
 def _agent_reps(reg: dict) -> dict:
-    """On-chain reputation per agent tokenId (getReputation), read live from Mantle. Cached ~120s.
-    Empty/zero until recordJobOutcome runs — honest (reputation accrues forward)."""
+    """Per-agent on-chain state read live from Mantle (cached ~120s): reputation (getReputation) +
+    credentials sealed (credentialCountFor = how many desk outputs were recorded on-chain). Honest:
+    reputation reads zero until outcomes resolve; credentials grow as the org seals each cycle's outputs."""
     hit = _AGENTS_CACHE.get("reps")
     if hit and time.time() - hit[0] < 120:
         return hit[1]
@@ -321,17 +329,26 @@ def _agent_reps(reg: dict) -> dict:
         from web3 import Web3
 
         from firm.onchain_recorder import MANTLE_SEPOLIA_RPC, _env
-        abi = json.loads((Path(__file__).resolve().parent.parent / "contracts" / "out"
-                          / "ReputationRegistry.sol" / "ReputationRegistry.json").read_text())["abi"]
+        out_dir = Path(__file__).resolve().parent.parent / "contracts" / "out"
+        rep_abi = json.loads((out_dir / "ReputationRegistry.sol" / "ReputationRegistry.json").read_text())["abi"]
+        val_abi = json.loads((out_dir / "ValidationRegistry.sol" / "ValidationRegistry.json").read_text())["abi"]
         w3 = Web3(Web3.HTTPProvider(_env("MANTLE_SEPOLIA_RPC_URL") or MANTLE_SEPOLIA_RPC, request_kwargs={"timeout": 10}))
-        c = w3.eth.contract(address=Web3.to_checksum_address(reg["reputation"]), abi=abi)
+        rc = w3.eth.contract(address=Web3.to_checksum_address(reg["reputation"]), abi=rep_abi)
+        vc = w3.eth.contract(address=Web3.to_checksum_address(reg["validation"]), abi=val_abi)
         ids = [reg.get("firm", {}).get("tokenId")] + [d.get("tokenId") for d in (reg.get("desks") or {}).values()]
         for tid in [i for i in ids if i is not None]:
+            rec: dict = {}
             try:
-                r = c.functions.getReputation(int(tid)).call()
-                out[str(tid)] = {"total_jobs": int(r[0]), "successful_jobs": int(r[1]), "cum_pnl": int(r[2])}
+                r = rc.functions.getReputation(int(tid)).call()
+                rec.update({"total_jobs": int(r[0]), "successful_jobs": int(r[1]), "cum_pnl": int(r[2])})
             except Exception:  # noqa: BLE001
                 pass
+            try:
+                rec["credentials"] = int(vc.functions.credentialCountFor(int(tid)).call())
+            except Exception:  # noqa: BLE001
+                pass
+            if rec:
+                out[str(tid)] = rec
     except Exception:  # noqa: BLE001
         pass
     _AGENTS_CACHE["reps"] = (time.time(), out)
