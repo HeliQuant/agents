@@ -315,6 +315,30 @@ def trades(limit: int = 120):
 _AGENTS_CACHE: dict = {}
 
 
+def _credential_counts(validation_addr: str) -> dict:
+    """Outputs sealed per agent — count CredentialRecorded events (agentTokenId = indexed topic1) via
+    Etherscan v2 getLogs. Reliable where the deployed credentialCountFor view under-reports."""
+    out: dict = {}
+    try:
+        import collections
+
+        import requests
+        from web3 import Web3
+
+        from firm.onchain_recorder import CHAIN_ID, _env
+        topic0 = Web3.keccak(text="CredentialRecorded(uint256,uint256,bytes32,uint8,address)").hex()
+        if not topic0.startswith("0x"):
+            topic0 = "0x" + topic0
+        r = requests.get("https://api.etherscan.io/v2/api", timeout=12, params={
+            "chainid": CHAIN_ID, "module": "logs", "action": "getLogs", "address": validation_addr,
+            "topic0": topic0, "fromBlock": 0, "toBlock": "latest", "apikey": _env("MANTLESCAN_API_KEY") or ""}).json()
+        rows = r.get("result") if isinstance(r.get("result"), list) else []
+        out = dict(collections.Counter(int(x["topics"][1], 16) for x in rows if len(x.get("topics", [])) > 1))
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 def _agent_reps(reg: dict) -> dict:
     """Per-agent on-chain state read live from Mantle (cached ~120s): reputation (getReputation) +
     credentials sealed (credentialCountFor = how many desk outputs were recorded on-chain). Honest:
@@ -334,21 +358,18 @@ def _agent_reps(reg: dict) -> dict:
         val_abi = json.loads((out_dir / "ValidationRegistry.sol" / "ValidationRegistry.json").read_text())["abi"]
         w3 = Web3(Web3.HTTPProvider(_env("MANTLE_SEPOLIA_RPC_URL") or MANTLE_SEPOLIA_RPC, request_kwargs={"timeout": 10}))
         rc = w3.eth.contract(address=Web3.to_checksum_address(reg["reputation"]), abi=rep_abi)
-        vc = w3.eth.contract(address=Web3.to_checksum_address(reg["validation"]), abi=val_abi)
         ids = [reg.get("firm", {}).get("tokenId")] + [d.get("tokenId") for d in (reg.get("desks") or {}).values()]
+        # credentials sealed per agent — tally CredentialRecorded events via Etherscan getLogs (the
+        # deployed credentialCountFor view under-reports; the events are the source of truth).
+        creds = _credential_counts(reg["validation"])
         for tid in [i for i in ids if i is not None]:
-            rec: dict = {}
+            rec: dict = {"credentials": creds.get(int(tid), 0)}
             try:
                 r = rc.functions.getReputation(int(tid)).call()
                 rec.update({"total_jobs": int(r[0]), "successful_jobs": int(r[1]), "cum_pnl": int(r[2])})
             except Exception:  # noqa: BLE001
                 pass
-            try:
-                rec["credentials"] = int(vc.functions.credentialCountFor(int(tid)).call())
-            except Exception:  # noqa: BLE001
-                pass
-            if rec:
-                out[str(tid)] = rec
+            out[str(tid)] = rec
     except Exception:  # noqa: BLE001
         pass
     _AGENTS_CACHE["reps"] = (time.time(), out)
