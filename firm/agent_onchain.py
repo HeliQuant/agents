@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "data" / "agent_registry.json"
-ABI_DIR = ROOT.parent / "contracts" / "out"
+ABI_DIR = ROOT / "abi"  # bundled into the agents deploy (contracts/out is a sibling, absent on Railway)
 PROOF_ATTESTED = 1  # ProofKind.AttestedByValidator
 
 
@@ -52,7 +52,7 @@ def record_outputs(analysts: dict, asset: str, job_id: int) -> list[dict]:
         w3 = Web3(Web3.HTTPProvider(_env("MANTLE_SEPOLIA_RPC_URL") or MANTLE_SEPOLIA_RPC, request_kwargs={"timeout": 12}))
         if not w3.is_connected():
             return []
-        abi = json.loads((ABI_DIR / "ValidationRegistry.sol" / "ValidationRegistry.json").read_text())["abi"]
+        abi = json.loads((ABI_DIR / "ValidationRegistry.json").read_text())
         c = w3.eth.contract(address=Web3.to_checksum_address(reg["validation"]), abi=abi)
         acct = Account.from_key(pk)
         nonce = w3.eth.get_transaction_count(acct.address)

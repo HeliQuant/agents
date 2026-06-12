@@ -353,9 +353,8 @@ def _agent_reps(reg: dict) -> dict:
         from web3 import Web3
 
         from firm.onchain_recorder import MANTLE_SEPOLIA_RPC, _env
-        out_dir = Path(__file__).resolve().parent.parent / "contracts" / "out"
-        rep_abi = json.loads((out_dir / "ReputationRegistry.sol" / "ReputationRegistry.json").read_text())["abi"]
-        val_abi = json.loads((out_dir / "ValidationRegistry.sol" / "ValidationRegistry.json").read_text())["abi"]
+        abi_dir = Path(__file__).resolve().parent / "abi"  # bundled (contracts/out absent on Railway)
+        rep_abi = json.loads((abi_dir / "ReputationRegistry.json").read_text())
         w3 = Web3(Web3.HTTPProvider(_env("MANTLE_SEPOLIA_RPC_URL") or MANTLE_SEPOLIA_RPC, request_kwargs={"timeout": 10}))
         rc = w3.eth.contract(address=Web3.to_checksum_address(reg["reputation"]), abi=rep_abi)
         ids = [reg.get("firm", {}).get("tokenId")] + [d.get("tokenId") for d in (reg.get("desks") or {}).values()]
