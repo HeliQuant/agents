@@ -794,7 +794,10 @@ def status() -> dict:
 
     def _view(p: dict) -> dict:
         v = {k: p.get(k) for k in ("id", "asset", "dir", "tier", "entry", "sl", "tp",
-                                   "sl_pct", "tp_pct", "votes", "reasons", "utc_open")}
+                                   "sl_pct", "tp_pct", "cap_h", "votes", "reasons", "utc_open")}
+        v["horizon_h"] = p.get("cap_h", HORIZON_H)  # the dynamic timeframe this position trades on (3h fade / 8h trend / 24h edge)
+        if p.get("t_open"):
+            v["held_h"] = round((_now() - p["t_open"]) / 3600, 2)  # hours held so far (held_h / horizon_h = progress)
         now = prices.get(p["asset"])
         if now:
             sign = 1 if p["dir"] == "LONG" else -1
