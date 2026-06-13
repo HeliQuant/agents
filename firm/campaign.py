@@ -52,6 +52,13 @@ LEARN_FADE = 0.5            # a condition with a PROVEN-losing realized record t
 ASSET_MIN_N = 8             # min realized closes on an ASSET before its win-rate can fade it
 ASSET_COLD_WR = 0.42        # asset realized win-rate below this (and net<0) = "cold" → trade it smaller
 ASSET_COLD_FADE = 0.5       # cold asset trades at half size → capital auto-concentrates on what works
+ASSET_BENCH_N = 10          # recent-window size to judge a DEEP-cold asset for benching
+ASSET_BENCH_WR = 0.40       # recent win-rate below this (+ net<0) over the window = bench (skip opens)
+ASSET_PROBE_EVERY = 6       # while benched, let 1 probe trade through every N steps so it can re-learn
+# ElfaAI/structure: the worst BTC/major trades come from entering MID-RANGE (chop). Only open near a
+# range EDGE (reclaim/rejection); abstain in the dead zone. Range = last RANGE_BARS 1h highs/lows.
+RANGE_BARS = 24
+RANGE_DEADZONE = (0.34, 0.66)  # price-in-range fraction inside this band = chop → abstain
 MAX_DATA_AGE_H = 12
 ATR_TP_MULT = 2.5           # take-profit at 2.5x the 1h ATR (reachable within the 4h horizon if it trends)
 ATR_SL_MULT = 1.8           # stop-loss at 1.8x ATR -> R:R ~1.4, both sized to the asset's real volatility
@@ -375,6 +382,23 @@ def _trend(asset: str) -> str:
         return "flat"
 
 
+def _range_pos(asset: str) -> float | None:
+    """Price's position in the last RANGE_BARS 1h high/low channel: 0 = at range low, 1 = at range
+    high. ElfaAI/structure read: the worst major trades come from entering MID-range (chop) — only act
+    near an EDGE. Returns None on failure (→ don't block)."""
+    try:
+        r = requests.get(f"{BYBIT}/v5/market/kline",
+                         params={"category": "linear", "symbol": f"{asset}USDT", "interval": "60", "limit": str(RANGE_BARS + 4)},
+                         timeout=12).json()
+        rows = list(reversed(r["result"]["list"]))[-RANGE_BARS:]
+        highs = [float(x[2]) for x in rows]
+        lows = [float(x[3]) for x in rows]
+        hi, lo, close = max(highs), min(lows), float(rows[-1][4])
+        return (close - lo) / (hi - lo) if hi > lo else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def step(log=print) -> dict:
     """One campaign step: resolve matured positions, open new desk-justified ones. Called by the app
     loop every CAMPAIGN_STEP_MIN. Cheap (no LLM): a few HTTP calls + CSV reads."""
@@ -482,6 +506,21 @@ def step(log=print) -> dict:
             if _ev:
                 scan[a] = f"macro de-risk: {_ev} window (vol up, direction noise)"
                 continue
+        # ASSET BENCH (deep-cold): an asset whose RECENT record is a proven loser is benched so capital
+        #   stops bleeding into it; a probe trade is let through every N steps so it can still re-learn.
+        apb = _asset_perf(a, pos, limit=ASSET_BENCH_N)
+        if apb["n"] >= ASSET_BENCH_N and apb["win_pct"] < ASSET_BENCH_WR and apb["net"] < 0:
+            probe = s.setdefault("bench_probe", {})
+            probe[a] = probe.get(a, 0) + 1
+            if probe[a] < ASSET_PROBE_EVERY:
+                scan[a] = f"benched: cold {apb['win_pct'] * 100:.0f}%/${apb['net']:+.1f} (probe in {ASSET_PROBE_EVERY - probe[a]})"
+                continue
+            probe[a] = 0  # this step: let one probe through to refresh the record
+        # STRUCTURE (ElfaAI): the worst major trades enter MID-range (chop). Only act near a range edge.
+        rp = _range_pos(a)
+        if rp is not None and RANGE_DEADZONE[0] < rp < RANGE_DEADZONE[1]:
+            scan[a] = f"mid-range chop (pos {rp:.2f}) — no edge, abstain"
+            continue
         _refresh_if_stale(a, log=log)  # Amsterdam: Bybit reachable -> the campaign feeds itself
         net, reasons = desk_votes(a)
         if net == 0 or not reasons:
@@ -625,10 +664,13 @@ def _anchor_closed(pos: list, log=print) -> None:
         log(f"  [campaign] anchor skipped ({str(e)[:60]})")
 
 
-def _asset_perf(asset: str, pos: list) -> dict:
+def _asset_perf(asset: str, pos: list, limit: int | None = None) -> dict:
     """Realized record for ONE asset (its closed trades) — the asset-level analog of cond_record.
-    Lets a persistently-losing asset (BTC/MNT chop) auto-fade so capital concentrates on what works."""
+    Lets a persistently-losing asset (BTC/MNT chop) auto-fade/bench so capital concentrates on what
+    works. `limit` = use only the last N closed (recent window) so a benched asset can recover."""
     closed = [p for p in pos if p.get("asset") == asset and p.get("exit") is not None]
+    if limit:
+        closed = closed[-limit:]
     n = len(closed)
     if not n:
         return {"n": 0, "win_pct": 0.0, "net": 0.0}
