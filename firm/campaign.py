@@ -61,8 +61,11 @@ LEARN_FADE = 0.5            # a condition with a PROVEN-losing realized record t
 ASSET_MIN_N = 8             # min realized closes on an ASSET before its win-rate can fade it
 ASSET_COLD_WR = 0.42        # asset realized win-rate below this (and net<0) = "cold" → trade it smaller
 ASSET_COLD_FADE = 0.5       # cold asset trades at half size → capital auto-concentrates on what works
-ASSET_WARM_WR = 0.55        # PROVEN-positive recent win-rate (and net>0) = "warm" → modest size boost
-ASSET_WARM_BOOST = 1.4      # warm asset trades 1.4x (capped) → prioritise winners; NOT the 2x edge size
+ASSET_WARM_WR = 0.55        # decent proven record (win-rate, and net>0, >=8 samples) = "warm" → modest boost
+ASSET_WARM_BOOST = 1.3      # warm tier: 1.3x
+ASSET_WARM_STRONG_WR = 0.66 # strong proven record → bigger boost (the ladder's top rung)
+ASSET_WARM_STRONG_BOOST = 1.6  # strong tier: 1.6x — CAPPED below the 2x reserved for a validated OOS edge
+                            #   (a strong recent record earns more capital, but a streak is not an edge)
 COLD_CADENCE = 3            # a cold (losing) asset opens only 1 of every N eligible steps → less frequency
 ASSET_BENCH_N = 10          # recent-window size to judge a DEEP-cold asset for benching
 ASSET_BENCH_WR = 0.40       # recent win-rate below this AND a MEANINGFUL net loss = bench (skip opens)
@@ -714,8 +717,13 @@ def step(log=print) -> dict:
         #   OOS-validated edge) and sample-gated — recent win-rate is not a validated edge, and the cold-fade
         #   above pulls it straight back if the winner cools. Concentrate on winners without chasing noise.
         elif ap["n"] >= ASSET_MIN_N and ap["win_pct"] >= ASSET_WARM_WR and ap["net"] > 0:
-            size *= ASSET_WARM_BOOST
-            tag = f"warm-asset {ap['win_pct'] * 100:.0f}%/${ap['net']:+.1f}->boost"
+            # WARM LADDER: scale the boost to how STRONG the PROVEN record is (win-rate over >=8 closed
+            # trades — not a 10-min streak, which would be variance). Two rungs, both CAPPED below the 2x
+            # reserved for a validated OOS edge — a hot record earns more capital, never edge-size.
+            strong = ap["win_pct"] >= ASSET_WARM_STRONG_WR
+            boost = ASSET_WARM_STRONG_BOOST if strong else ASSET_WARM_BOOST
+            size *= boost
+            tag = f"{'STRONG' if strong else 'warm'}-asset {ap['win_pct'] * 100:.0f}%/${ap['net']:+.1f}->x{boost:g}"
             learned = tag if learned == "n/a" else f"{learned} · {tag}"
         cap_h = _dynamic_horizon(reasons, edge)   # DYNAMIC: trend-follow gets room, fades stay short
         p = {"id": s["opened"] + 1, "asset": a, "dir": direction, "tier": tier,
