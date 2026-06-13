@@ -558,6 +558,14 @@ def step(log=print) -> dict:
         #    bled (-1.3..-3.3%) while trend-aligned longs won; the contrarian desk vote was getting run
         #    over by the move. Skip an entry the prevailing 1h regime clearly opposes (proxy classifier). ──
         trend = _trend(a)
+        if trend == "flat":
+            # No CLEAR 1h regime (price/SMA and slope disagree = chop/ambiguous). Live diagnosis: directional
+            # trades on no-trend tape have no edge — BTC/ETH/SOL/SUI/MNT all bled at 25–40% win while the one
+            # clearly-trending asset (HYPE, 62.5%) won. So only trade a CLEAR trend, aligned to it; a flat read
+            # = ABSTAIN (the learning loop logs it as capital preserved, not a loss). Closes the leak where
+            # 'flat' slipped past the don't-fight-the-trend veto below and opened a raw contrarian bet.
+            scan[a] = "no clear trend (flat) — abstain"
+            continue
         flipped = False
         if (trend == "up" and direction == "SHORT") or (trend == "down" and direction == "LONG"):
             # Contrarian wants to FIGHT the trend. Veto that side — but rather than go dormant, take the
