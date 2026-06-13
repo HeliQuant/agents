@@ -22,6 +22,7 @@ State persists in Supabase ("campaign" + "campaign_pos") -> survives redeploys, 
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 from datetime import datetime, timezone
@@ -364,6 +365,27 @@ def _has_edge(asset: str) -> bool:
         return False
 
 
+_CALIB_CACHE: dict | None = None
+
+
+def _tp_sl_mult(asset: str) -> tuple[float, float]:
+    """Per-asset (TP, SL) ATR-multipliers from the MFE/MAE calibration (data/tp_sl_calibration.json,
+    Learning #1) — reachable distances MEASURED from realized excursions, because the fixed 2.5x-ATR TP
+    was hit by only 0-21% of trades. Falls back to ATR_TP_MULT/ATR_SL_MULT when no calibration exists.
+    The calibration is IN-SAMPLE (re-run scripts/95 as trades accumulate); it makes the geometry reachable,
+    it does NOT manufacture an edge."""
+    global _CALIB_CACHE
+    if _CALIB_CACHE is None:
+        try:
+            _CALIB_CACHE = json.loads((ROOT / "data" / "tp_sl_calibration.json").read_text())
+        except (FileNotFoundError, ValueError):
+            _CALIB_CACHE = {}
+    c = _CALIB_CACHE.get(asset.upper().replace("WMNT", "MNT"))
+    if c and c.get("suggested_tp_mult") and c.get("suggested_sl_mult"):
+        return float(c["suggested_tp_mult"]), float(c["suggested_sl_mult"])
+    return ATR_TP_MULT, ATR_SL_MULT
+
+
 def _dynamic_horizon(reasons: list, edge: bool) -> int:
     """Hold-time cap (hours) chosen by SETUP TYPE — the desks' read sets the clock, deterministically
     (code computes the number from the desk reasons; no LLM guesses a horizon). A validated edge lets
@@ -436,7 +458,8 @@ def step(log=print) -> dict:
     for p in pos:
         if p.get("exit") is None and p.get("sl") is None:
             atr = _atr_pct(p["asset"])
-            sl_d, tp_d = ATR_SL_MULT * atr, ATR_TP_MULT * atr
+            tp_m, sl_m = _tp_sl_mult(p["asset"])
+            sl_d, tp_d = sl_m * atr, tp_m * atr
             sgn = 1 if p["dir"] == "LONG" else -1
             p["sl"] = round(p["entry"] * (1 - sgn * sl_d), 8)
             p["tp"] = round(p["entry"] * (1 + sgn * tp_d), 8)
@@ -621,7 +644,8 @@ def step(log=print) -> dict:
             continue
         tier = "LEAN" if flipped else ("STRONG" if abs(net) >= 2 else "LEAN")
         atr = _atr_pct(a)
-        sl_d, tp_d = ATR_SL_MULT * atr, ATR_TP_MULT * atr
+        tp_m, sl_m = _tp_sl_mult(a)   # per-asset reachable TP/SL from MFE/MAE calibration (Learning #1)
+        sl_d, tp_d = sl_m * atr, tp_m * atr
         sgn = 1 if direction == "LONG" else -1
         sl = round(px * (1 - sgn * sl_d), 8)   # LONG: SL below entry · SHORT: SL above
         tp = round(px * (1 + sgn * tp_d), 8)   # LONG: TP above entry · SHORT: TP below
@@ -740,6 +764,7 @@ def trade_log(limit: int = 120) -> dict:
     closed = [p for p in pos if p.get("exit") is not None]
     rows = [{k: p.get(k) for k in ("id", "asset", "dir", "tier", "entry", "exit", "exit_reason",
                                    "net_pct", "pnl_usd", "size_usd", "regime", "reasons",
+                                   "atr_pct", "tp_pct", "sl_pct", "cap_h",
                                    "utc_open", "utc_close", "anchor_tx")}
              for p in closed[-limit:]][::-1]
     wins = sum(1 for p in closed if (p.get("pnl_usd") or 0) > 0)
