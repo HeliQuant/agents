@@ -49,9 +49,11 @@ STALL_MIN = 0.003           #   followed through (gross < 0.3%) by STALL_H, cut 
 TRAIL_K = 1.8               # chandelier trailing-stop distance (xATR) — ratchets toward price on edge trades
 EDGE_SIZE_MULT = 2.0        # edge + regime-favored -> size up 2x (scripts/90: amplifying pays ONLY where edge exists)
 COST_RT = 0.0020
-COOLDOWN_H = 5             # was 12h — too long, it froze the floor (every losing round benched an asset half
-                           #   a day). The deeper gates (flat-trend, mid-range, deep-cold bench, calibrated TP)
-                           #   now catch bad setups, so a shorter cooldown re-admits clear-trend setups sooner.
+COOLDOWN_H = 0             # REMOVED — the asset-level cooldown is gone (no set, no gate). It was redundant
+                           #   with the finer controls (cond-ban on the losing condition + cold-fade +
+                           #   frequency throttle + deep-cold bench + warm ladder) and the flat-trend /
+                           #   mid-range / calibrated-TP gates; a blunt whole-asset freeze only slowed the
+                           #   floor. Kept as 0 so any stray reference is a no-op.
 FAIL_BAN_H = 8             # was 24h — a failed condition is benched then FORGIVEN + re-tried (regime may have
                            #   turned) — bans EXPIRE so the firm can adapt back, never starves permanently
 LEARN_MIN_N = 4             # min realized closes on a (condition@regime) before its record steers sizing
@@ -539,10 +541,14 @@ def step(log=print) -> dict:
         r["conds"].append(p["cond"])
         if r["closed"] >= SLOTS_PER_ASSET:
             if r["pnl"] <= 0:
+                # Ban only the LOSING CONDITIONS (cond-level, finer) — NOT a blunt whole-asset cooldown.
+                # The asset-level cooldown was removed: prioritisation already handles risk (cold-fade +
+                # frequency throttle + deep-cold bench de-rank a losing asset; the warm ladder promotes a
+                # winner) and the flat-trend / mid-range / calibrated-TP gates still bind. A whole-asset
+                # freeze on top just slowed the floor down with no added protection.
                 for c in set(r["conds"]):
-                    s["failed_conditions"][c] = _now() + FAIL_BAN_H * 3600   # benched, not banned forever
-                s["cooldown_until"][p["asset"]] = _now() + COOLDOWN_H * 3600
-                log(f"  📚 CAMPAIGN LEARN {p['asset']}: round ${r['pnl']:+.2f} -> conditions benched {FAIL_BAN_H}h + cooldown")
+                    s["failed_conditions"][c] = _now() + FAIL_BAN_H * 3600
+                log(f"  📚 CAMPAIGN LEARN {p['asset']}: round ${r['pnl']:+.2f} -> losing conditions benched {FAIL_BAN_H}h")
             s["rounds"][p["asset"]] = {"closed": 0, "pnl": 0.0, "conds": []}
 
     # ── Learning #3: shadow-score abstains. Judge each abstained setup at its horizon against real price —
@@ -570,10 +576,6 @@ def step(log=print) -> dict:
     for a in BASKET:
         # NO lifetime cap — fully autonomous, trades continuously. The only throttle is SLOTS_PER_ASSET
         # (max concurrent positions per asset); lifetime opened just keeps climbing.
-        cd = s["cooldown_until"].get(a, 0) - _now()
-        if cd > 0:
-            scan[a] = f"cooldown {cd / 3600:.1f}h"
-            continue
         if len([p for p in pos if p["asset"] == a and p.get("exit") is None]) >= SLOTS_PER_ASSET:
             scan[a] = "slots full"
             continue
