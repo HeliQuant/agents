@@ -46,6 +46,8 @@ SHADOW_HORIZON_H = 4        # Learning #3: judge an ABSTAINED setup at this hori
 STALL_H = 2.0               # ElfaAI: a BTC/major trade gives proof fast — if a non-edge trade hasn't
 STALL_MIN = 0.003           #   followed through (gross < 0.3%) by STALL_H, cut it (dead money) instead of
                             #   rotting to the 4h cap. Trend-aligned winners that ARE running are spared.
+NEAR_TP_FRAC = 0.80         # near-TP lock: once price is >=80% of the way to TP but hasn't broken through
+NEAR_TP_WAIT_S = 300        #   and stalls there 5 min, take the near-win (don't let it fall back to SL)
 TRAIL_K = 1.8               # chandelier trailing-stop distance (xATR) — ratchets toward price on edge trades
 EDGE_SIZE_MULT = 2.0        # edge + regime-favored -> size up 2x (scripts/90: amplifying pays ONLY where edge exists)
 COST_RT = 0.0020
@@ -540,6 +542,17 @@ def step(log=print) -> dict:
                 reason = "SL" if px <= p["sl"] else "TP" if px >= p["tp"] else None
             else:  # SHORT: SL above entry, TP below
                 reason = "SL" if px >= p["sl"] else "TP" if px <= p["tp"] else None
+        # NEAR-TP LOCK (user rule): the trade reached the near-TP band (>= NEAR_TP_FRAC of the way to TP)
+        #   but STALLED there for NEAR_TP_WAIT without breaking TP -> take the near-win instead of risking
+        #   the "almost touched TP then dumped to SL" reversal. Sign-agnostic via progress toward TP.
+        if reason is None and p.get("tp") and p["tp"] != p["entry"]:
+            prog = (px - p["entry"]) / (p["tp"] - p["entry"])   # 1.0 = at TP; >=NEAR_TP_FRAC = in the band
+            if NEAR_TP_FRAC <= prog < 1.0:
+                p["near_tp_since"] = p.get("near_tp_since") or _now()
+                if _now() - p["near_tp_since"] >= NEAR_TP_WAIT_S:
+                    reason = "NEARTP"
+            else:
+                p["near_tp_since"] = None   # left the band (fell back or broke TP) -> reset the timer
         # DYNAMIC STALL exit (ElfaAI): a non-edge trade that hasn't followed through by STALL_H is
         #   information — cut the dead money instead of letting it rot to the 4h cap (the 14/17 TIME-exit
         #   bleed). A trade that IS running (gross >= STALL_MIN) is spared to keep riding.
@@ -560,7 +573,7 @@ def step(log=print) -> dict:
         s["net_usd"] = round(s["net_usd"] + pnl, 4)
         if pnl > 0:
             s["wins"] += 1
-        icon = {"TP": "🎯", "SL": "🛑", "TIME": "⏱", "TRAIL": "🪤", "STALL": "✂"}[reason]
+        icon = {"TP": "🎯", "SL": "🛑", "TIME": "⏱", "TRAIL": "🪤", "STALL": "✂", "NEARTP": "🏁"}.get(reason, "✓")
         log(f"  {'🟩' if pnl > 0 else '🟥'}{icon} CAMPAIGN CLOSE #{p['id']} {p['dir']} {p['asset']} {reason} "
             f"{p['net_pct']:+.2f}% (${pnl:+.2f}) | total ${s['net_usd']:+.2f}")
         _exec_close(p, log)
@@ -940,7 +953,7 @@ def status() -> dict:
     recent = [p for p in pos if p.get("exit") is not None][-12:]
     wr = (s["wins"] / s["closed"] * 100) if s["closed"] else 0.0
     closed = [p for p in pos if p.get("exit") is not None]
-    by_reason = {r: len([p for p in closed if p.get("exit_reason") == r]) for r in ("TP", "SL", "TIME", "TRAIL", "STALL")}
+    by_reason = {r: len([p for p in closed if p.get("exit_reason") == r]) for r in ("TP", "SL", "TIME", "TRAIL", "STALL", "NEARTP")}
     from firm import state_store  # diagnostics: is the step alive, and do writes actually persist?
     save_err = state_store.LAST_SAVE_ERR.get("campaign_pos", "")
     cr = s.get("cond_record", {})
