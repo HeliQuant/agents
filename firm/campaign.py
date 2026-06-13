@@ -56,7 +56,8 @@ ASSET_MIN_N = 8             # min realized closes on an ASSET before its win-rat
 ASSET_COLD_WR = 0.42        # asset realized win-rate below this (and net<0) = "cold" → trade it smaller
 ASSET_COLD_FADE = 0.5       # cold asset trades at half size → capital auto-concentrates on what works
 ASSET_BENCH_N = 10          # recent-window size to judge a DEEP-cold asset for benching
-ASSET_BENCH_WR = 0.40       # recent win-rate below this (+ net<0) over the window = bench (skip opens)
+ASSET_BENCH_WR = 0.40       # recent win-rate below this AND a MEANINGFUL net loss = bench (skip opens)
+ASSET_BENCH_NET = -1.5      # bench only on a real loss — not a near-breakeven asset (don't freeze SOL)
 ASSET_PROBE_EVERY = 6       # while benched, let 1 probe trade through every N steps so it can re-learn
 # ElfaAI/structure: the worst BTC/major trades come from entering MID-RANGE (chop). Only open near a
 # range EDGE (reclaim/rejection); abstain in the dead zone. Range = last RANGE_BARS 1h highs/lows.
@@ -519,7 +520,7 @@ def step(log=print) -> dict:
         # ASSET BENCH (deep-cold): an asset whose RECENT record is a proven loser is benched so capital
         #   stops bleeding into it; a probe trade is let through every N steps so it can still re-learn.
         apb = _asset_perf(a, pos, limit=ASSET_BENCH_N)
-        if apb["n"] >= ASSET_BENCH_N and apb["win_pct"] < ASSET_BENCH_WR and apb["net"] < 0:
+        if apb["n"] >= ASSET_BENCH_N and apb["win_pct"] < ASSET_BENCH_WR and apb["net"] < ASSET_BENCH_NET:
             probe = s.setdefault("bench_probe", {})
             probe[a] = probe.get(a, 0) + 1
             if probe[a] < ASSET_PROBE_EVERY:
