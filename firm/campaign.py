@@ -57,6 +57,7 @@ ASSET_COLD_WR = 0.42        # asset realized win-rate below this (and net<0) = "
 ASSET_COLD_FADE = 0.5       # cold asset trades at half size → capital auto-concentrates on what works
 ASSET_WARM_WR = 0.55        # PROVEN-positive recent win-rate (and net>0) = "warm" → modest size boost
 ASSET_WARM_BOOST = 1.4      # warm asset trades 1.4x (capped) → prioritise winners; NOT the 2x edge size
+COLD_CADENCE = 3            # a cold (losing) asset opens only 1 of every N eligible steps → less frequency
 ASSET_BENCH_N = 10          # recent-window size to judge a DEEP-cold asset for benching
 ASSET_BENCH_WR = 0.40       # recent win-rate below this AND a MEANINGFUL net loss = bench (skip opens)
 ASSET_BENCH_NET = -1.5      # bench only on a real loss — not a near-breakeven asset (don't freeze SOL)
@@ -529,6 +530,16 @@ def step(log=print) -> dict:
                 scan[a] = f"benched: cold {apb['win_pct'] * 100:.0f}%/${apb['net']:+.1f} (probe in {ASSET_PROBE_EVERY - probe[a]})"
                 continue
             probe[a] = 0  # this step: let one probe through to refresh the record
+        # COLD CADENCE: an asset that's cold (losing full-record) but not deep-cold-benched opens LESS
+        #   OFTEN — a frequency throttle on top of the half-size fade, so a chronic loser bleeds slower
+        #   while it works back toward neutral. Symmetric to the warm-asset boost that prioritises winners.
+        apc = _asset_perf(a, pos)
+        if apc["n"] >= ASSET_MIN_N and apc["win_pct"] < ASSET_COLD_WR and apc["net"] < 0:
+            cc = s.setdefault("cold_cadence", {})
+            cc[a] = cc.get(a, 0) + 1
+            if cc[a] % COLD_CADENCE != 0:
+                scan[a] = f"cold {apc['win_pct'] * 100:.0f}% — throttled (open 1/{COLD_CADENCE})"
+                continue
         # STRUCTURE (ElfaAI): the worst major trades enter MID-range (chop). Only act near a range edge.
         rp = _range_pos(a)
         if rp is not None and RANGE_DEADZONE[0] < rp < RANGE_DEADZONE[1]:
