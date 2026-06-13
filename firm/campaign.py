@@ -471,6 +471,17 @@ def step(log=print) -> dict:
         if len([p for p in pos if p["asset"] == a and p.get("exit") is None]) >= SLOTS_PER_ASSET:
             scan[a] = "slots full"
             continue
+        # MACRO EVENT-RISK (research-backed): around FOMC/CPI, BTC/ETH vol ~2x but DIRECTION is noise
+        #   (CAR ~0). Abstain in the window — never bet direction into a scheduled macro print.
+        if a in ("BTC", "ETH"):
+            try:
+                from firm.macro_calendar import event_window
+                _ev, _ = event_window()
+            except Exception:  # noqa: BLE001
+                _ev = None
+            if _ev:
+                scan[a] = f"macro de-risk: {_ev} window (vol up, direction noise)"
+                continue
         _refresh_if_stale(a, log=log)  # Amsterdam: Bybit reachable -> the campaign feeds itself
         net, reasons = desk_votes(a)
         if net == 0 or not reasons:
