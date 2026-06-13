@@ -872,7 +872,7 @@ def test_open(asset: str, log=print) -> dict:
     if not px:
         return {"error": f"no live price for {a}"}
     trend = _trend(a)
-    direction = "SHORT" if trend == "down" else "LONG"
+    direction = "LONG"  # force LONG: Bybit spot testnet exec is LONG-only, so this tests the executable rail
     atr = _atr_pct(a)
     tp_m, sl_m = _tp_sl_mult(a)
     sl_d, tp_d = sl_m * atr, tp_m * atr
@@ -887,11 +887,15 @@ def test_open(asset: str, log=print) -> dict:
          "cond": _cond_key(a, reasons), "reasons": reasons, "regime": trend, "votes": 0,
          "t_open": _now(), "utc_open": datetime.now(timezone.utc).isoformat(), "exit": None}
     pos.append(p)
+    _exec_open(p, log)   # ALSO attempt the REAL Bybit-testnet fill (LONG spot) — tests the venue/region path
     _save(s, pos, log)
     log(f"  🧪 CAMPAIGN TEST-OPEN #{p['id']} {direction} {a} @ {px} · TP {p['tp']} / SL {p['sl']} · {cap_h}h · trailing-on")
     return {"opened": {k: p.get(k) for k in ("id", "asset", "dir", "tier", "entry", "sl", "tp",
                                              "tp_pct", "sl_pct", "cap_h", "regime", "reasons")},
-            "note": "TEST position opened (bypasses gates). Watch /campaign; resolves with trailing + calibrated TP."}
+            "executed_on_testnet": bool(p.get("venue")),
+            "venue": p.get("venue"), "exec_qty": p.get("exec_qty"),
+            "note": ("executed_on_testnet=true => REAL Bybit testnet fill (this region/IP can trade). "
+                     "false => paper only (geo-blocked, or CAMPAIGN_EXECUTE off) — check /logs for the reason.")}
 
 
 def status() -> dict:
