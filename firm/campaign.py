@@ -817,6 +817,27 @@ def trade_log(limit: int = 120) -> dict:
             "open_now": len([p for p in pos if p.get("exit") is None]), "trades": rows}
 
 
+def rebaseline(log=print) -> dict:
+    """OPS: reset the campaign floor to a CLEAN slate. The prior trades accumulated under a SUPERSEDED
+    config — an unreachable 2.5× TP (hit only 0–21% of the time), no flat-trend gate, no per-asset
+    calibration, no trailing, plus a blunt cooldown — so every asset is now benched on losses that DON'T
+    reflect the current logic. This discards that broken-config record and re-measures from zero under the
+    live logic (calibrated TP/SL, trailing, dynamic horizon, warm ladder, clear-trend gate). It is NOT
+    hiding a real result — it re-runs a known-broken experiment with the fixes in place. Do this ONCE after
+    a config change; never re-baseline to shop for a good run (that would be self-deception)."""
+    s, _ = _load()
+    prior = {"opened": s.get("opened", 0), "closed": s.get("closed", 0),
+             "wins": s.get("wins", 0), "net_usd": round(s.get("net_usd", 0.0), 2)}
+    fresh = {"opened": 0, "closed": 0, "wins": 0, "net_usd": 0.0,
+             "failed_conditions": {}, "cooldown_until": {}, "rounds": {}, "done": False}
+    _save(fresh, [], log)
+    log(f"  ♻ CAMPAIGN RE-BASELINE: cleared {prior['closed']} broken-config trades (net ${prior['net_usd']}) "
+        f"-> fresh slate under the live logic")
+    return {"reset": True, "prior_broken_config_record": prior,
+            "note": "fresh slate — assets re-test clean under calibrated-TP + trailing + flat-trend gate. "
+                    "Re-baseline ONCE after a config change; do not re-run to shop for a good result."}
+
+
 def clear_bans(log=print) -> dict:
     """OPS: lift the TIME-bans (cooldowns + failed-condition bans + bench probes + cold cadence) so the
     floor re-evaluates EVERY asset on the next step. The RECORD-based discipline stays — a deep-cold asset

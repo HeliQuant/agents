@@ -332,6 +332,24 @@ def trades(limit: int = 120):
         return JSONResponse({"error": str(e)[:120], "trades": []}, status_code=500)
 
 
+@app.api_route("/campaign/rebaseline", methods=["GET", "POST"])
+def campaign_rebaseline(token: str = ""):
+    """OPS: reset the floor to a clean slate — the prior trades were under a superseded (broken-TP) config,
+    so every asset is benched on losses that don't reflect the current logic. Discards that record and
+    re-measures from zero. Token-gated. Do this ONCE after a config change, not to shop for a good run.
+    Usage: /campaign/rebaseline?token=<INGEST_TOKEN>"""
+    tok = os.environ.get("INGEST_TOKEN")
+    if not tok or token != tok:
+        return JSONResponse({"error": "bad or missing token — append ?token=<INGEST_TOKEN>"}, status_code=403)
+    try:
+        from firm.campaign import rebaseline
+        r = rebaseline(log=log)
+        _kick_campaign()
+        return JSONResponse(r)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)[:160]}, status_code=500)
+
+
 @app.api_route("/campaign/unstick", methods=["GET", "POST"])
 def campaign_unstick(token: str = ""):
     """OPS: clear leftover cooldowns / condition-bans (e.g. set under an older, longer COOLDOWN_H) so the
