@@ -332,6 +332,23 @@ def trades(limit: int = 120):
         return JSONResponse({"error": str(e)[:120], "trades": []}, status_code=500)
 
 
+@app.api_route("/campaign/unstick", methods=["GET", "POST"])
+def campaign_unstick(token: str = ""):
+    """OPS: clear leftover cooldowns / condition-bans (e.g. set under an older, longer COOLDOWN_H) so the
+    floor re-evaluates all assets next step. Record-based bench + the discipline gates stay. Token-gated.
+    Usage: /campaign/unstick?token=<INGEST_TOKEN>"""
+    tok = os.environ.get("INGEST_TOKEN")
+    if not tok or token != tok:
+        return JSONResponse({"error": "bad or missing token — append ?token=<INGEST_TOKEN>"}, status_code=403)
+    try:
+        from firm.campaign import clear_bans
+        r = clear_bans(log=log)
+        _kick_campaign()  # advance a step now so freed assets get re-evaluated immediately
+        return JSONResponse(r)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)[:160]}, status_code=500)
+
+
 @app.api_route("/campaign/test-open", methods=["GET", "POST"])
 def campaign_test_open(asset: str = "SUI", token: str = ""):
     """OPS/TEST: force-open ONE paper position now to verify the live mechanics (calibrated TP/SL, dynamic

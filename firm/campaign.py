@@ -815,6 +815,27 @@ def trade_log(limit: int = 120) -> dict:
             "open_now": len([p for p in pos if p.get("exit") is None]), "trades": rows}
 
 
+def clear_bans(log=print) -> dict:
+    """OPS: lift the TIME-bans (cooldowns + failed-condition bans + bench probes + cold cadence) so the
+    floor re-evaluates EVERY asset on the next step. The RECORD-based discipline stays — a deep-cold asset
+    (losing recent record) is still benched, and the flat-trend / mid-range / calibrated-TP gates still
+    bind. This only clears leftover timers (e.g. cooldowns set under an older, longer COOLDOWN_H); it does
+    NOT force a trade — an asset still needs a clear trend to open."""
+    s, pos = _load()
+    fc = s.get("failed_conditions")
+    cleared = {"cooldowns": len(s.get("cooldown_until") or {}),
+               "failed_conditions": len(fc) if isinstance(fc, (dict, list)) else 0,
+               "bench_probe": len(s.get("bench_probe") or {})}
+    s["cooldown_until"] = {}
+    s["failed_conditions"] = {}
+    s["bench_probe"] = {}
+    s["cold_cadence"] = {}
+    _save(s, pos, log)
+    log(f"  🧹 CAMPAIGN UNSTICK: cleared {cleared} (record-based bench + gates intact)")
+    return {"cleared": cleared,
+            "note": "time-bans lifted; record-based bench + flat-trend/mid-range/calibrated-TP gates still bind"}
+
+
 def test_open(asset: str, log=print) -> dict:
     """OPS/TEST: force-open ONE paper position now, bypassing the entry gates, to verify the LIVE mechanics
     (calibrated TP/SL, dynamic horizon, trailing) without waiting for an organic clear-trend setup. Aligned
