@@ -1,0 +1,62 @@
+{
+  "SOL": {
+    "n": 24,
+    "median_mfe_atr": 0.64,
+    "median_mae_atr": 0.85,
+    "p60_mfe_atr": 1.39,
+    "pct_reached_cur_tp": 0.08,
+    "pct_would_hit_cur_sl": 0.21,
+    "suggested_tp_mult": 1.4,
+    "suggested_sl_mult": 1.2
+  },
+  "MNT": {
+    "n": 19,
+    "median_mfe_atr": 1.19,
+    "median_mae_atr": 0.49,
+    "p60_mfe_atr": 1.19,
+    "pct_reached_cur_tp": 0.0,
+    "pct_would_hit_cur_sl": 0.16,
+    "suggested_tp_mult": 1.2,
+    "suggested_sl_mult": 0.8
+  },
+  "SUI": {
+    "n": 21,
+    "median_mfe_atr": 0.93,
+    "median_mae_atr": 0.52,
+    "p60_mfe_atr": 1.84,
+    "pct_reached_cur_tp": 0.0,
+    "pct_would_hit_cur_sl": 0.29,
+    "suggested_tp_mult": 1.8,
+    "suggested_sl_mult": 0.8
+  },
+  "BTC": {
+    "n": 21,
+    "median_mfe_atr": 0.77,
+    "median_mae_atr": 1.67,
+    "p60_mfe_atr": 0.88,
+    "pct_reached_cur_tp": 0.0,
+    "pct_would_hit_cur_sl": 0.24,
+    "suggested_tp_mult": 0.9,
+    "suggested_sl_mult": 2.0
+  },
+  "ETH": {
+    "n": 20,
+    "median_mfe_atr": 0.93,
+    "median_mae_atr": 1.27,
+    "p60_mfe_atr": 1.02,
+    "pct_reached_cur_tp": 0.0,
+    "pct_would_hit_cur_sl": 0.2,
+    "suggested_tp_mult": 1.0,
+    "suggested_sl_mult": 1.6
+  },
+  "HYPE": {
+    "n": 24,
+    "median_mfe_atr": 1.05,
+    "median_mae_atr": 0.72,
+    "p60_mfe_atr": 1.15,
+    "pct_reached_cur_tp": 0.21,
+    "pct_would_hit_cur_sl": 0.04,
+    "suggested_tp_mult": 1.2,
+    "suggested_sl_mult": 1.0
+  }
+}
