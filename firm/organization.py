@@ -286,15 +286,24 @@ def tool_smartsocial(ticker: str) -> dict:
     asset_l = ticker.lower().replace("wmnt", "mnt")
     in_trend = next((x for x in trending if (x.get("token") or "").lower() in (asset_l, "mantle", "meth", "cmeth")), None)
     _tops = [str(x.get("token") or "?") for x in trending[:5]]
-    print(f"   ◦ Elfa smart-social: top narratives {_tops} · {ticker.upper()} in-trend={bool(in_trend)}")
+    # per-asset depth (in-scope): engagement-weighted mentions + news for THIS ticker — quantifies
+    # ATTENTION magnitude (e.g. BTC ~1M views/24h vs a Mantle-eco asset ~3k = a real attention gap).
+    soc = elfa.asset_social(ticker)
+    print(f"   ◦ Elfa smart-social: top narratives {_tops} · {ticker.upper()} in-trend={bool(in_trend)} · "
+          f"views24h={soc.get('total_views_24h')} mentions={soc.get('mention_count')}")
     return {
         "asset": ticker.upper(),
         "asset_in_top_trending": bool(in_trend),
         "asset_mindshare": in_trend or "not in top trending (low social mindshare — expected for a Mantle-eco asset)",
+        "asset_attention_24h": {"smart_mentions": soc.get("mention_count"), "total_views": soc.get("total_views_24h"),
+                                "news_items": len(soc.get("token_news", []))},
+        "asset_top_mentions": soc.get("top_mentions", [])[:3],
+        "asset_news": soc.get("token_news", [])[:3],
         "top_narratives_24h": trending[:6],
-        "methodology": ("Elfa smart-social mindshare (Twitter/X + Telegram, SMART accounts not retail noise). "
-                        "Detects where attention/narratives rotate (early-rotation signal). CONTEXT for the PM; "
-                        "Mantle-eco social mindshare is typically thin -> mainly a majors/narrative context."),
+        "methodology": ("Elfa smart-social: trending mindshare + per-asset top-mentions/news (SMART accounts, "
+                        "Twitter/X + Telegram). Attention magnitude (views/mentions) = how much the asset is in "
+                        "the conversation — CONTEXT, not direction. (Elfa's AI trade-analysis chat is paid-tier; "
+                        "its FRAMEWORK is encoded in the firm's gates instead.) Mantle-eco social is typically thin."),
     }
 
 
