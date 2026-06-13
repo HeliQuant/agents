@@ -39,6 +39,9 @@ TARGET = 1000              # the floor is a CONTINUOUS exploration engine — th
 SLOTS_PER_ASSET = 4
 HORIZON_H = 4               # no-edge max hold: time-exit if neither SL nor TP is hit first
 HORIZON_EDGE_H = 24         # EDGE assets let winners run far longer (backtested: trail+long-cap pays only WITH edge)
+STALL_H = 2.0               # ElfaAI: a BTC/major trade gives proof fast — if a non-edge trade hasn't
+STALL_MIN = 0.003           #   followed through (gross < 0.3%) by STALL_H, cut it (dead money) instead of
+                            #   rotting to the 4h cap. Trend-aligned winners that ARE running are spared.
 TRAIL_K = 1.8               # chandelier trailing-stop distance (xATR) — ratchets toward price on edge trades
 EDGE_SIZE_MULT = 2.0        # edge + regime-favored -> size up 2x (scripts/90: amplifying pays ONLY where edge exists)
 COST_RT = 0.0020
@@ -447,6 +450,13 @@ def step(log=print) -> dict:
                 reason = "SL" if px <= p["sl"] else "TP" if px >= p["tp"] else None
             else:  # SHORT: SL above entry, TP below
                 reason = "SL" if px >= p["sl"] else "TP" if px <= p["tp"] else None
+        # DYNAMIC STALL exit (ElfaAI): a non-edge trade that hasn't followed through by STALL_H is
+        #   information — cut the dead money instead of letting it rot to the 4h cap (the 14/17 TIME-exit
+        #   bleed). A trade that IS running (gross >= STALL_MIN) is spared to keep riding.
+        if reason is None and not p.get("edge") and _now() - p["t_open"] >= STALL_H * 3600:
+            gross = (1 if p["dir"] == "LONG" else -1) * (px / p["entry"] - 1)
+            if gross < STALL_MIN:
+                reason = "STALL"
         if reason is None and _now() - p["t_open"] >= p.get("cap_h", HORIZON_H) * 3600:
             reason = "TIME"
         if reason is None:
@@ -460,7 +470,7 @@ def step(log=print) -> dict:
         s["net_usd"] = round(s["net_usd"] + pnl, 4)
         if pnl > 0:
             s["wins"] += 1
-        icon = {"TP": "🎯", "SL": "🛑", "TIME": "⏱", "TRAIL": "🪤"}[reason]
+        icon = {"TP": "🎯", "SL": "🛑", "TIME": "⏱", "TRAIL": "🪤", "STALL": "✂"}[reason]
         log(f"  {'🟩' if pnl > 0 else '🟥'}{icon} CAMPAIGN CLOSE #{p['id']} {p['dir']} {p['asset']} {reason} "
             f"{p['net_pct']:+.2f}% (${pnl:+.2f}) | total ${s['net_usd']:+.2f}")
         _exec_close(p, log)
@@ -701,7 +711,7 @@ def status() -> dict:
     recent = [p for p in pos if p.get("exit") is not None][-12:]
     wr = (s["wins"] / s["closed"] * 100) if s["closed"] else 0.0
     closed = [p for p in pos if p.get("exit") is not None]
-    by_reason = {r: len([p for p in closed if p.get("exit_reason") == r]) for r in ("TP", "SL", "TIME", "TRAIL")}
+    by_reason = {r: len([p for p in closed if p.get("exit_reason") == r]) for r in ("TP", "SL", "TIME", "TRAIL", "STALL")}
     from firm import state_store  # diagnostics: is the step alive, and do writes actually persist?
     save_err = state_store.LAST_SAVE_ERR.get("campaign_pos", "")
     cr = s.get("cond_record", {})
