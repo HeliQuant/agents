@@ -10,7 +10,7 @@ and exposes endpoints to watch it live:
 
 CONFIG (Railway env vars):
   ASSETS=MNT            comma-list to analyze each cycle (default MNT)
-  INTERVAL_MIN=30       minutes between cycles (keep >=15 to respect LLM rate limits)
+  INTERVAL_MIN=12       minutes between LLM org cycles (multi-key rotation lifts the old >=15 limit; floor is 5)
   EXECUTE=0             1 = place firm-sanctioned LIVE orders (Bybit); 0 = analyze-only (default, safe)
   REFRESH_DATA=1        1 = re-fetch fresh market data each cycle (needs Bybit public reachable)
   + all the firm's API keys (LLM/Groq, Nansen, Elfa, Mantlescan, Supabase, Bybit...) — copy from your .env.
@@ -37,7 +37,7 @@ DATA = ROOT / "data"
 
 # ── config ──
 ASSETS = [a.strip().upper() for a in os.environ.get("ASSETS", "MNT").split(",") if a.strip()]
-INTERVAL_MIN = max(int(os.environ.get("INTERVAL_MIN", "30")), 5)
+INTERVAL_MIN = max(int(os.environ.get("INTERVAL_MIN", "12")), 5)  # multi-key rotation makes a faster cadence safe
 EXECUTE = os.environ.get("EXECUTE", "0").strip() in {"1", "true", "yes"}
 REFRESH_DATA = os.environ.get("REFRESH_DATA", "1").strip() in {"1", "true", "yes"}
 
