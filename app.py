@@ -175,6 +175,7 @@ def _do_cycle() -> bool:
 
 
 _campaign_last = 0.0
+_campaign_lock = threading.Lock()
 CAMPAIGN_STEP_MIN = int(os.environ.get("CAMPAIGN_STEP_MIN", "15"))
 CAMPAIGN_ON = os.environ.get("CAMPAIGN", "1") == "1"
 
@@ -182,10 +183,14 @@ CAMPAIGN_ON = os.environ.get("CAMPAIGN", "1") == "1"
 def _campaign_step() -> None:
     """THE LIVE CAMPAIGN (user mandate): open 100 desk-justified PAPER positions at live prices.
     Cheap (no LLM) and independent of the org-cycle gap — runs every CAMPAIGN_STEP_MIN. Real capital
-    still requires a validated edge; this is the exploration floor at full hunt. firm/campaign.py."""
+    still requires a validated edge; this is the exploration floor at full hunt. firm/campaign.py.
+    Lock-guarded: the internal loop AND opportunistic FE-traffic kicks both call this; the non-blocking
+    lock + time guard mean concurrent callers never double-open (≤1 step / CAMPAIGN_STEP_MIN)."""
     global _campaign_last
     if not CAMPAIGN_ON or time.time() - _campaign_last < CAMPAIGN_STEP_MIN * 60:
         return
+    if not _campaign_lock.acquire(blocking=False):
+        return  # a step is already running (loop or another kick) — never stack opens
     _campaign_last = time.time()
     try:
         from firm.campaign import step
@@ -194,6 +199,18 @@ def _campaign_step() -> None:
             f"· net ${st.get('net_usd'):+.2f}")
     except Exception as e:  # noqa: BLE001
         log(f"[campaign] step error: {str(e)[:120]}")
+    finally:
+        _campaign_lock.release()
+
+
+def _kick_campaign() -> None:
+    """Opportunistic self-driver: any FE read of /campaign or /trades spawns a campaign step in the
+    BACKGROUND (non-blocking — the read returns the current book instantly; the step lands by the next
+    poll). Makes the floor self-driving on real traffic, so it keeps advancing even when the external
+    keep-alive pinger lapses and Railway suspends the internal loop. Time-guard + lock keep it cheap."""
+    if not CAMPAIGN_ON or time.time() - _campaign_last < CAMPAIGN_STEP_MIN * 60:
+        return
+    threading.Thread(target=_campaign_step, daemon=True).start()
 
 
 def _loop() -> None:
@@ -293,6 +310,7 @@ def campaign_status():
     """THE LIVE CAMPAIGN progress — 100 desk-justified paper positions at live prices. Each open
     position carries the desk votes that justified it (auditable bravery; PM real-capital gate
     untouched). Watch it fill: opened/closed/win%/net + the live book."""
+    _kick_campaign()  # FE traffic self-drives the floor — advances even if the keep-alive pinger lapses
     try:
         from firm.campaign import status
         return JSONResponse(status())
@@ -305,6 +323,7 @@ def trades(limit: int = 120):
     """THE TRADE LEDGER — every resolved campaign trade with its full data (entry/exit/PnL/exit-reason/
     desk-votes). Honest: these are paper trades at live prices (real fills on Bybit testnet when armed);
     the chain anchors the DECISIONS, not each paper fill."""
+    _kick_campaign()  # FE traffic self-drives the floor — advances even if the keep-alive pinger lapses
     try:
         from firm.campaign import trade_log
         return JSONResponse(trade_log(limit))
