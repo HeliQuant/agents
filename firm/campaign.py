@@ -976,6 +976,13 @@ def status() -> dict:
             sign = 1 if p["dir"] == "LONG" else -1
             v["now"] = now
             v["upnl_pct"] = round((sign * (now / p["entry"] - 1) - COST_RT) * 100, 3)  # net of cost, honest
+            if p.get("tp") and p["tp"] != p["entry"]:
+                prog = (now - p["entry"]) / (p["tp"] - p["entry"])
+                v["tp_progress_pct"] = round(max(0.0, min(prog, 1.0)) * 100, 1)  # 0..100% of the way to TP
+                if NEAR_TP_FRAC <= prog < 1.0:  # in the near-TP band — surface the 5-min lock countdown
+                    v["near_tp"] = True
+                    if p.get("near_tp_since"):
+                        v["near_tp_lock_in_s"] = max(0, round(NEAR_TP_WAIT_S - (_now() - p["near_tp_since"])))
         return v
 
     _fc = s.get("failed_conditions") or {}
