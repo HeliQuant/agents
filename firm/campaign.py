@@ -477,7 +477,12 @@ def step(log=print) -> dict:
         if not px:
             continue
         reason = None
-        if p.get("edge"):  # EDGE asset -> chandelier trailing stop: let the winner run, ratchet stop toward price
+        # TRAILING for EDGE or TREND-FOLLOW trades: let a runner run and ratchet the stop toward price (lock
+        # gains) instead of capping at a fixed TP or giving it back at the time-exit. Contrarian/fade trades
+        # keep their fixed TP (they're meant to SNAP, not run). Closes the TRAIL=0 gap — trailing never fired
+        # because only EDGE trades used it and the registry is empty; trend-follow trades are where runs happen.
+        trail_on = bool(p.get("edge")) or any("trend-follow" in str(r) for r in (p.get("reasons") or []))
+        if trail_on:  # chandelier trailing stop: ratchet toward price, exit on an ATR-sized reversal
             a_atr = ((p.get("atr_pct") or 0) / 100) or ATR_FALLBACK_PCT
             if p["dir"] == "SHORT":
                 p["best"] = min(p.get("best", p["entry"]), px)
@@ -845,9 +850,9 @@ def status() -> dict:
             "sized_up_open": len([p for p in open_pos if (p.get("size_usd") or 0) > VIRTUAL_FULL]),
             "skips": s.get("skips", 0), "recent_skips": s.get("recent_skips", [])[-6:],
             "last_scan": s.get("last_scan", {}),  # per-asset reason it did/didn't open last step
-            "risk_model": (f"edge-gated · NO-edge: SL {ATR_SL_MULT}×ATR / TP {ATR_TP_MULT}×ATR / dynamic hold "
-                           f"{HORIZON_FADE_H}h fade · {HORIZON_TREND_H}h trend · "
-                           f"EDGE: trailing {TRAIL_K}×ATR / {HORIZON_EDGE_H}h, regime-favored size ×{EDGE_SIZE_MULT:g}"),
+            "risk_model": (f"per-asset calibrated SL/TP (MFE/MAE) · dynamic hold: {HORIZON_FADE_H}h fade (fixed TP, snaps) · "
+                           f"{HORIZON_TREND_H}h trend (trailing {TRAIL_K}×ATR, lets runners run) · "
+                           f"EDGE: trailing / {HORIZON_EDGE_H}h, regime-favored size ×{EDGE_SIZE_MULT:g}"),
             "open_positions": [_view(p) for p in open_pos],
             "recent_closes": [{k: p.get(k) for k in ("id", "asset", "dir", "exit", "exit_reason",
                                                      "net_pct", "pnl_usd", "utc_close")} for p in recent],
