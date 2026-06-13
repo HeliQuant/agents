@@ -176,7 +176,7 @@ def _do_cycle() -> bool:
 
 _campaign_last = 0.0
 _campaign_lock = threading.Lock()
-CAMPAIGN_STEP_MIN = int(os.environ.get("CAMPAIGN_STEP_MIN", "15"))
+CAMPAIGN_STEP_MIN = int(os.environ.get("CAMPAIGN_STEP_MIN", "8"))
 CAMPAIGN_ON = os.environ.get("CAMPAIGN", "1") == "1"
 
 
@@ -269,6 +269,7 @@ def run_cycle():
     UptimeRobot & most monitors send HEAD by default (a GET-only route returns 405 and the ping is a no-op).
     Frequent pings are cheap no-ops (keep the host warm); a real cycle fires only when MIN_CYCLE_GAP_S has
     elapsed — robust even if the internal loop is frozen by a suspended host."""
+    _kick_campaign()  # every keep-alive ping also advances the trading floor (guarded to <=1 step / CAMPAIGN_STEP_MIN)
     now = time.time()
     gap = now - STATE["last_cycle_epoch"]
     if gap < MIN_CYCLE_GAP_S:

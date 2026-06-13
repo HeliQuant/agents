@@ -48,9 +48,11 @@ STALL_MIN = 0.003           #   followed through (gross < 0.3%) by STALL_H, cut 
 TRAIL_K = 1.8               # chandelier trailing-stop distance (xATR) — ratchets toward price on edge trades
 EDGE_SIZE_MULT = 2.0        # edge + regime-favored -> size up 2x (scripts/90: amplifying pays ONLY where edge exists)
 COST_RT = 0.0020
-COOLDOWN_H = 12
-FAIL_BAN_H = 24             # a failed condition is benched 24h then FORGIVEN + re-tried (regime may have
-                            #   turned) — bans EXPIRE so the firm can adapt back, never starves permanently
+COOLDOWN_H = 5             # was 12h — too long, it froze the floor (every losing round benched an asset half
+                           #   a day). The deeper gates (flat-trend, mid-range, deep-cold bench, calibrated TP)
+                           #   now catch bad setups, so a shorter cooldown re-admits clear-trend setups sooner.
+FAIL_BAN_H = 8             # was 24h — a failed condition is benched then FORGIVEN + re-tried (regime may have
+                           #   turned) — bans EXPIRE so the firm can adapt back, never starves permanently
 LEARN_MIN_N = 4             # min realized closes on a (condition@regime) before its record steers sizing
                             #   (=SLOTS_PER_ASSET so the fade engages right when a losing round bans it)
 LEARN_FADE = 0.5            # a condition with a PROVEN-losing realized record trades at half size (learned
