@@ -49,6 +49,9 @@ LEARN_MIN_N = 4             # min realized closes on a (condition@regime) before
                             #   (=SLOTS_PER_ASSET so the fade engages right when a losing round bans it)
 LEARN_FADE = 0.5            # a condition with a PROVEN-losing realized record trades at half size (learned
                             #   caution that PERSISTS past the 24h ban) — still a probe, so it can re-learn
+ASSET_MIN_N = 8             # min realized closes on an ASSET before its win-rate can fade it
+ASSET_COLD_WR = 0.42        # asset realized win-rate below this (and net<0) = "cold" → trade it smaller
+ASSET_COLD_FADE = 0.5       # cold asset trades at half size → capital auto-concentrates on what works
 MAX_DATA_AGE_H = 12
 ATR_TP_MULT = 2.5           # take-profit at 2.5x the 1h ATR (reachable within the 4h horizon if it trends)
 ATR_SL_MULT = 1.8           # stop-loss at 1.8x ATR -> R:R ~1.4, both sized to the asset's real volatility
@@ -546,6 +549,13 @@ def step(log=print) -> dict:
                 learned = f"FADE @{trend} (record {rec['wins']}/{rec['n']} ${rec['pnl']:+.2f})"
             else:
                 learned = f"trusted @{trend} ({rec['wins']}/{rec['n']} ${rec['pnl']:+.2f})"
+        # ASSET-PERFORMANCE fade: a proven-losing asset (cold win-rate + net<0) trades smaller, so capital
+        #   auto-concentrates on what works (HYPE) and fades the chop/no-edge assets (BTC/MNT). Data-driven.
+        ap = _asset_perf(a, pos)
+        if ap["n"] >= ASSET_MIN_N and ap["win_pct"] < ASSET_COLD_WR and ap["net"] < 0:
+            size *= ASSET_COLD_FADE
+            tag = f"cold-asset {ap['win_pct'] * 100:.0f}%/${ap['net']:+.1f}->fade"
+            learned = tag if learned == "n/a" else f"{learned} · {tag}"
         cap_h = HORIZON_EDGE_H if edge else HORIZON_H
         p = {"id": s["opened"] + 1, "asset": a, "dir": direction, "tier": tier,
              "size_usd": size, "edge": edge, "cap_h": cap_h, "best": px, "trail": sl,
@@ -602,6 +612,17 @@ def _anchor_closed(pos: list, log=print) -> None:
             log(f"  [campaign] anchored {len(res)} trade(s) on Mantle · latest {res[-1]['tx_hash'][:14]}...")
     except Exception as e:  # noqa: BLE001
         log(f"  [campaign] anchor skipped ({str(e)[:60]})")
+
+
+def _asset_perf(asset: str, pos: list) -> dict:
+    """Realized record for ONE asset (its closed trades) — the asset-level analog of cond_record.
+    Lets a persistently-losing asset (BTC/MNT chop) auto-fade so capital concentrates on what works."""
+    closed = [p for p in pos if p.get("asset") == asset and p.get("exit") is not None]
+    n = len(closed)
+    if not n:
+        return {"n": 0, "win_pct": 0.0, "net": 0.0}
+    wins = sum(1 for p in closed if (p.get("pnl_usd") or 0) > 0)
+    return {"n": n, "win_pct": wins / n, "net": round(sum(p.get("pnl_usd") or 0 for p in closed), 4)}
 
 
 def trade_log(limit: int = 120) -> dict:
