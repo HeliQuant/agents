@@ -42,6 +42,7 @@ HORIZON_H = 4               # default/fallback max hold: time-exit if neither SL
 HORIZON_EDGE_H = 24         # EDGE assets let winners run far longer (backtested: trail+long-cap pays only WITH edge)
 HORIZON_TREND_H = 8         # DYNAMIC: a trend-aligned trade gets room — trends persist, let it run
 HORIZON_FADE_H = 3          # DYNAMIC: a contrarian/positioning fade is short — it snaps fast or the thesis is wrong
+SHADOW_HORIZON_H = 4        # Learning #3: judge an ABSTAINED setup at this horizon (would taking it have paid?)
 STALL_H = 2.0               # ElfaAI: a BTC/major trade gives proof fast — if a non-edge trade hasn't
 STALL_MIN = 0.003           #   followed through (gross < 0.3%) by STALL_H, cut it (dead money) instead of
                             #   rotting to the 4h cap. Trend-aligned winners that ARE running are spared.
@@ -536,6 +537,26 @@ def step(log=print) -> dict:
                 log(f"  📚 CAMPAIGN LEARN {p['asset']}: round ${r['pnl']:+.2f} -> conditions benched {FAIL_BAN_H}h + cooldown")
             s["rounds"][p["asset"]] = {"closed": 0, "pnl": 0.0, "conds": []}
 
+    # ── Learning #3: shadow-score abstains. Judge each abstained setup at its horizon against real price —
+    #    was the gate RIGHT (the skipped trade would've lost) or WRONG (it would've won)? Turns abstain /
+    #    cooldown time into learning: the firm measures whether its own discipline actually pays. ──
+    srec = s.setdefault("shadow_record", {})
+    pending = []
+    for sh in s.get("shadows", []):
+        mark = prices.get(sh["asset"])
+        mature = _now() - sh["t"] >= sh["h"] * 3600
+        if not mature or not mark:
+            if _now() - sh["t"] < sh["h"] * 3600 * 4:  # keep until judged; drop only if hopelessly stale
+                pending.append(sh)
+            continue
+        sgn = 1 if sh["dir"] == "LONG" else -1
+        net = sgn * (mark / sh["entry"] - 1) - COST_RT
+        r = srec.setdefault(sh["gate"], {"n": 0, "abstain_correct": 0, "would_pnl_pct": 0.0})
+        r["n"] += 1
+        r["abstain_correct"] += int(net <= 0)   # right to abstain if the skipped trade wouldn't have profited
+        r["would_pnl_pct"] = round(r["would_pnl_pct"] + net * 100, 3)
+    s["shadows"] = pending
+
     # ── open new (desk-justified only) ──
     scan: dict = {}   # per-asset: WHY it did/didn't open this step (diagnostic, surfaced on /campaign)
     for a in BASKET:
@@ -616,6 +637,11 @@ def step(log=print) -> dict:
             # clearly-trending asset (HYPE, 62.5%) won. So only trade a CLEAR trend, aligned to it; a flat read
             # = ABSTAIN (the learning loop logs it as capital preserved, not a loss). Closes the leak where
             # 'flat' slipped past the don't-fight-the-trend veto below and opened a raw contrarian bet.
+            # Learning #3: log a SHADOW of the trade we're declining, so this gate is scored later — was
+            # abstaining RIGHT (it would've lost) or WRONG (it would've won)?
+            s.setdefault("shadows", []).append({"asset": a, "dir": direction, "gate": "flat-trend",
+                                                "entry": px, "t": _now(), "h": SHADOW_HORIZON_H})
+            del s["shadows"][:-300]
             scan[a] = "no clear trend (flat) — abstain"
             continue
         flipped = False
@@ -825,4 +851,8 @@ def status() -> dict:
             "open_positions": [_view(p) for p in open_pos],
             "recent_closes": [{k: p.get(k) for k in ("id", "asset", "dir", "exit", "exit_reason",
                                                      "net_pct", "pnl_usd", "utc_close")} for p in recent],
+            "shadow_learning": {g: {"abstains_scored": r["n"],
+                                    "abstain_correct_pct": round(100 * r["abstain_correct"] / r["n"], 1) if r["n"] else None,
+                                    "avg_would_pnl_pct": round(r["would_pnl_pct"] / r["n"], 3) if r["n"] else None}
+                                for g, r in (s.get("shadow_record") or {}).items()},
             "principle": "paper capital at live prices — REAL capital still requires a validated edge"}
