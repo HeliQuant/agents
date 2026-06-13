@@ -332,6 +332,21 @@ def trades(limit: int = 120):
         return JSONResponse({"error": str(e)[:120], "trades": []}, status_code=500)
 
 
+@app.api_route("/campaign/test-open", methods=["GET", "POST"])
+def campaign_test_open(asset: str = "SUI", token: str = ""):
+    """OPS/TEST: force-open ONE paper position now to verify the live mechanics (calibrated TP/SL, dynamic
+    horizon, trailing) without waiting for an organic setup. Token-gated (INGEST_TOKEN). Counts in the
+    ledger — use sparingly. Usage: /campaign/test-open?asset=SUI&token=<INGEST_TOKEN>"""
+    tok = os.environ.get("INGEST_TOKEN")
+    if not tok or token != tok:
+        return JSONResponse({"error": "bad or missing token — append ?token=<INGEST_TOKEN>"}, status_code=403)
+    try:
+        from firm.campaign import test_open
+        return JSONResponse(test_open(asset, log=log))
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)[:160]}, status_code=500)
+
+
 _AGENTS_CACHE: dict = {}
 
 
@@ -565,10 +580,14 @@ def probe():
                 r.json(); json_ok = True
             except Exception:  # noqa: BLE001
                 json_ok = False
-            out[name] = {"status": r.status_code, "ms": int((time.time() - t) * 1000),
-                         "json_ok": json_ok, "snippet": _sanitize(r.text[:70])}
+            # ANY HTTP response = the host was REACHED. A 401/403 here just means this probe sent no API
+            # key (it tests reachability, not auth) — it does NOT mean the firm's real keys are bad.
+            out[name] = {"status": r.status_code, "reachable": True,
+                         "note": "reachable (auth not tested — 401/403 here is expected, probe sends no key)"
+                                 if r.status_code in (401, 403) else "reachable",
+                         "ms": int((time.time() - t) * 1000), "json_ok": json_ok, "snippet": _sanitize(r.text[:70])}
         except Exception as e:  # noqa: BLE001
-            out[name] = {"error": f"{type(e).__name__}: {str(e)[:90]}"}
+            out[name] = {"reachable": False, "error": f"{type(e).__name__}: {str(e)[:90]}"}
     return JSONResponse(out)
 
 

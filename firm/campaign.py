@@ -807,6 +807,41 @@ def trade_log(limit: int = 120) -> dict:
             "open_now": len([p for p in pos if p.get("exit") is None]), "trades": rows}
 
 
+def test_open(asset: str, log=print) -> dict:
+    """OPS/TEST: force-open ONE paper position now, bypassing the entry gates, to verify the LIVE mechanics
+    (calibrated TP/SL, dynamic horizon, trailing) without waiting for an organic clear-trend setup. Aligned
+    to the current 1h regime (LONG on a flat read — it's a test), marked tier='TEST' + trend-follow so the
+    trailing stop applies. It is a real paper trade (counts in the ledger) — use sparingly."""
+    a = asset.strip().upper().replace("WMNT", "MNT")
+    if a not in BASKET:
+        return {"error": f"{a} not in basket {BASKET}"}
+    s, pos = _load()
+    px = (live_prices() or {}).get(a)
+    if not px:
+        return {"error": f"no live price for {a}"}
+    trend = _trend(a)
+    direction = "SHORT" if trend == "down" else "LONG"
+    atr = _atr_pct(a)
+    tp_m, sl_m = _tp_sl_mult(a)
+    sl_d, tp_d = sl_m * atr, tp_m * atr
+    sgn = 1 if direction == "LONG" else -1
+    reasons = [f"trend-follow:{trend if trend in ('up', 'down') else 'test'}", "test-open"]
+    cap_h = _dynamic_horizon(reasons, False)
+    s["opened"] = s.get("opened", 0) + 1
+    p = {"id": s["opened"], "asset": a, "dir": direction, "tier": "TEST", "size_usd": VIRTUAL_LEAN,
+         "edge": False, "cap_h": cap_h, "best": px, "trail": round(px * (1 - sgn * sl_d), 8),
+         "entry": px, "sl": round(px * (1 - sgn * sl_d), 8), "tp": round(px * (1 + sgn * tp_d), 8),
+         "atr_pct": round(atr * 100, 3), "sl_pct": round(sl_d * 100, 2), "tp_pct": round(tp_d * 100, 2),
+         "cond": _cond_key(a, reasons), "reasons": reasons, "regime": trend, "votes": 0,
+         "t_open": _now(), "utc_open": datetime.now(timezone.utc).isoformat(), "exit": None}
+    pos.append(p)
+    _save(s, pos, log)
+    log(f"  🧪 CAMPAIGN TEST-OPEN #{p['id']} {direction} {a} @ {px} · TP {p['tp']} / SL {p['sl']} · {cap_h}h · trailing-on")
+    return {"opened": {k: p.get(k) for k in ("id", "asset", "dir", "tier", "entry", "sl", "tp",
+                                             "tp_pct", "sl_pct", "cap_h", "regime", "reasons")},
+            "note": "TEST position opened (bypasses gates). Watch /campaign; resolves with trailing + calibrated TP."}
+
+
 def status() -> dict:
     s, pos = _load()
     open_pos = [p for p in pos if p.get("exit") is None]
