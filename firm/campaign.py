@@ -55,6 +55,8 @@ LEARN_FADE = 0.5            # a condition with a PROVEN-losing realized record t
 ASSET_MIN_N = 8             # min realized closes on an ASSET before its win-rate can fade it
 ASSET_COLD_WR = 0.42        # asset realized win-rate below this (and net<0) = "cold" → trade it smaller
 ASSET_COLD_FADE = 0.5       # cold asset trades at half size → capital auto-concentrates on what works
+ASSET_WARM_WR = 0.55        # PROVEN-positive recent win-rate (and net>0) = "warm" → modest size boost
+ASSET_WARM_BOOST = 1.4      # warm asset trades 1.4x (capped) → prioritise winners; NOT the 2x edge size
 ASSET_BENCH_N = 10          # recent-window size to judge a DEEP-cold asset for benching
 ASSET_BENCH_WR = 0.40       # recent win-rate below this AND a MEANINGFUL net loss = bench (skip opens)
 ASSET_BENCH_NET = -1.5      # bench only on a real loss — not a near-breakeven asset (don't freeze SOL)
@@ -624,6 +626,14 @@ def step(log=print) -> dict:
         if ap["n"] >= ASSET_MIN_N and ap["win_pct"] < ASSET_COLD_WR and ap["net"] < 0:
             size *= ASSET_COLD_FADE
             tag = f"cold-asset {ap['win_pct'] * 100:.0f}%/${ap['net']:+.1f}->fade"
+            learned = tag if learned == "n/a" else f"{learned} · {tag}"
+        # WARM boost (symmetric): an asset with a PROVEN-positive recent record gets MORE capital, so the
+        #   floor prioritises what's working (e.g. HYPE). Modest + capped (1.4x, not the 2x reserved for an
+        #   OOS-validated edge) and sample-gated — recent win-rate is not a validated edge, and the cold-fade
+        #   above pulls it straight back if the winner cools. Concentrate on winners without chasing noise.
+        elif ap["n"] >= ASSET_MIN_N and ap["win_pct"] >= ASSET_WARM_WR and ap["net"] > 0:
+            size *= ASSET_WARM_BOOST
+            tag = f"warm-asset {ap['win_pct'] * 100:.0f}%/${ap['net']:+.1f}->boost"
             learned = tag if learned == "n/a" else f"{learned} · {tag}"
         cap_h = HORIZON_EDGE_H if edge else HORIZON_H
         p = {"id": s["opened"] + 1, "asset": a, "dir": direction, "tier": tier,
