@@ -368,7 +368,7 @@ def campaign_unstick(token: str = ""):
 
 
 @app.api_route("/campaign/test-open", methods=["GET", "POST"])
-def campaign_test_open(asset: str = "SUI", token: str = ""):
+def campaign_test_open(asset: str = "SUI", side: str = "long", token: str = ""):
     """OPS/TEST: force-open ONE paper position now to verify the live mechanics (calibrated TP/SL, dynamic
     horizon, trailing) without waiting for an organic setup. Token-gated (INGEST_TOKEN). Counts in the
     ledger — use sparingly. Usage: /campaign/test-open?asset=SUI&token=<INGEST_TOKEN>"""
@@ -377,7 +377,7 @@ def campaign_test_open(asset: str = "SUI", token: str = ""):
         return JSONResponse({"error": "bad or missing token — append ?token=<INGEST_TOKEN>"}, status_code=403)
     try:
         from firm.campaign import test_open
-        return JSONResponse(test_open(asset, log=log))
+        return JSONResponse(test_open(asset, side=side, log=log))
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"error": str(e)[:160]}, status_code=500)
 

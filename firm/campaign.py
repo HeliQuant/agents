@@ -188,10 +188,36 @@ def _spot_step(symbol: str) -> float | None:
         return None
 
 
+def _exec_perp_open(p: dict, ex, log=print) -> None:
+    """SHORT (or LONG) open -> real LINEAR PERP market order on Bybit TESTNET. Spot can't short; the perp
+    rail can (Sell-to-open). qty (contracts) = size_usd / entry, floored to the lot step (>= min qty)."""
+    sym = f"{p['asset']}USDT"
+    try:
+        ex.set_dry_run(False)  # real send — _exec_mod already enforced is_testnet (campaign never touches real money)
+        side = "Buy" if p["dir"] == "LONG" else "Sell"
+        inst = ex.get_instrument(sym)
+        qty = ex._round_qty(p["size_usd"] / p["entry"], inst.get("qty_step"))
+        if qty < (inst.get("min_order_qty") or 0):
+            qty = inst.get("min_order_qty") or 0
+        if not qty or qty <= 0:
+            log(f"  [exec] #{p['id']} {sym} perp qty=0 — paper only")
+            return
+        r = ex.place_market_order(sym, side, qty)
+        if r.get("sent"):
+            p["exec_qty"] = qty
+            p["venue"] = "bybit-testnet-perp"
+            log(f"  ⚡ EXECUTED #{p['id']} {side} {qty} {sym} PERP on Bybit TESTNET (real fill, fake money)")
+    except Exception as e:  # noqa: BLE001
+        log(f"  [exec] #{p['id']} {sym} perp {p['dir']} skipped ({str(e)[:70]}) — paper only")
+
+
 def _exec_open(p: dict, log=print) -> None:
-    """LONG open -> real market BUY on Bybit TESTNET spot (proven rail: 100/100 fills)."""
+    """Real Bybit TESTNET fill — LONG -> spot BUY (proven rail); SHORT -> linear PERP Sell-to-open."""
     ex = _exec_mod()
-    if not ex or p["dir"] != "LONG":
+    if not ex:
+        return
+    if p["dir"] == "SHORT":
+        _exec_perp_open(p, ex, log)
         return
     sym = f"{p['asset']}USDT"
     try:
@@ -215,7 +241,17 @@ def _exec_close(p: dict, log=print) -> None:
     if not ex or not p.get("exec_qty"):
         return
     sym = f"{p['asset']}USDT"
-    try:
+    if p.get("venue") == "bybit-testnet-perp":   # close the PERP with an opposite reduce-only order
+        try:
+            ex.set_dry_run(False)
+            opp = "Buy" if p["dir"] == "SHORT" else "Sell"
+            ex.place_market_order(sym, opp, p["exec_qty"], reduce_only=True)
+            p["exec_closed"] = True
+            log(f"  ⚡ EXECUTED #{p['id']} {opp} {p['exec_qty']} {sym} PERP close on Bybit TESTNET (reduce-only)")
+        except Exception as e:  # noqa: BLE001
+            log(f"  [exec] #{p['id']} {sym} perp close failed ({str(e)[:60]})")
+        return
+    try:   # spot close (LONG): SELL the coin we bought
         s = ex._trade_session()
         step_sz = _spot_step(sym) or 0.0001
         qty = int(p["exec_qty"] / step_sz) * step_sz
@@ -859,7 +895,7 @@ def clear_bans(log=print) -> dict:
             "note": "time-bans lifted; record-based bench + flat-trend/mid-range/calibrated-TP gates still bind"}
 
 
-def test_open(asset: str, log=print) -> dict:
+def test_open(asset: str, side: str = "long", log=print) -> dict:
     """OPS/TEST: force-open ONE paper position now, bypassing the entry gates, to verify the LIVE mechanics
     (calibrated TP/SL, dynamic horizon, trailing) without waiting for an organic clear-trend setup. Aligned
     to the current 1h regime (LONG on a flat read — it's a test), marked tier='TEST' + trend-follow so the
@@ -872,7 +908,7 @@ def test_open(asset: str, log=print) -> dict:
     if not px:
         return {"error": f"no live price for {a}"}
     trend = _trend(a)
-    direction = "LONG"  # force LONG: Bybit spot testnet exec is LONG-only, so this tests the executable rail
+    direction = "SHORT" if str(side).lower().startswith("s") else "LONG"  # ?side=short tests the perp-short rail
     atr = _atr_pct(a)
     tp_m, sl_m = _tp_sl_mult(a)
     sl_d, tp_d = sl_m * atr, tp_m * atr
