@@ -37,8 +37,10 @@ BASKET = ["MNT", "BTC", "ETH", "SOL", "HYPE", "SUI"]
 TARGET = 1000              # the floor is a CONTINUOUS exploration engine — the first 100 was the proof;
                            #   keep it running (and learning) instead of freezing 'done' at 100
 SLOTS_PER_ASSET = 4
-HORIZON_H = 4               # no-edge max hold: time-exit if neither SL nor TP is hit first
+HORIZON_H = 4               # default/fallback max hold: time-exit if neither SL nor TP is hit first
 HORIZON_EDGE_H = 24         # EDGE assets let winners run far longer (backtested: trail+long-cap pays only WITH edge)
+HORIZON_TREND_H = 8         # DYNAMIC: a trend-aligned trade gets room — trends persist, let it run
+HORIZON_FADE_H = 3          # DYNAMIC: a contrarian/positioning fade is short — it snaps fast or the thesis is wrong
 STALL_H = 2.0               # ElfaAI: a BTC/major trade gives proof fast — if a non-edge trade hasn't
 STALL_MIN = 0.003           #   followed through (gross < 0.3%) by STALL_H, cut it (dead money) instead of
                             #   rotting to the 4h cap. Trend-aligned winners that ARE running are spared.
@@ -362,6 +364,18 @@ def _has_edge(asset: str) -> bool:
         return False
 
 
+def _dynamic_horizon(reasons: list, edge: bool) -> int:
+    """Hold-time cap (hours) chosen by SETUP TYPE — the desks' read sets the clock, deterministically
+    (code computes the number from the desk reasons; no LLM guesses a horizon). A validated edge lets
+    winners run (HORIZON_EDGE_H); a trend-aligned trade gets room because trends persist (HORIZON_TREND_H);
+    a contrarian/positioning fade is short because mean-reversion snaps fast or the thesis is already
+    wrong (HORIZON_FADE_H). This is the 'dynamic timeframe' — adaptive, not 'always shorter'."""
+    if edge:
+        return HORIZON_EDGE_H
+    is_trend = any("trend-follow" in str(r) for r in (reasons or []))
+    return HORIZON_TREND_H if is_trend else HORIZON_FADE_H
+
+
 def _trend(asset: str) -> str:
     """Light 1h-kline regime read -> 'up' / 'down' / 'flat' (price vs SMA24 + short slope). A cheap,
     RESPONSIVE proxy for the 82.6% regime classifier, used to keep the campaign from FIGHTING a clear
@@ -646,7 +660,7 @@ def step(log=print) -> dict:
             size *= ASSET_WARM_BOOST
             tag = f"warm-asset {ap['win_pct'] * 100:.0f}%/${ap['net']:+.1f}->boost"
             learned = tag if learned == "n/a" else f"{learned} · {tag}"
-        cap_h = HORIZON_EDGE_H if edge else HORIZON_H
+        cap_h = _dynamic_horizon(reasons, edge)   # DYNAMIC: trend-follow gets room, fades stay short
         p = {"id": s["opened"] + 1, "asset": a, "dir": direction, "tier": tier,
              "size_usd": size, "edge": edge, "cap_h": cap_h, "best": px, "trail": sl,
              "entry": px, "sl": sl, "tp": tp, "atr_pct": round(atr * 100, 3),
@@ -775,7 +789,8 @@ def status() -> dict:
             "sized_up_open": len([p for p in open_pos if (p.get("size_usd") or 0) > VIRTUAL_FULL]),
             "skips": s.get("skips", 0), "recent_skips": s.get("recent_skips", [])[-6:],
             "last_scan": s.get("last_scan", {}),  # per-asset reason it did/didn't open last step
-            "risk_model": (f"edge-gated · NO-edge: SL {ATR_SL_MULT}×ATR / TP {ATR_TP_MULT}×ATR / {HORIZON_H}h cap · "
+            "risk_model": (f"edge-gated · NO-edge: SL {ATR_SL_MULT}×ATR / TP {ATR_TP_MULT}×ATR / dynamic hold "
+                           f"{HORIZON_FADE_H}h fade · {HORIZON_TREND_H}h trend · "
                            f"EDGE: trailing {TRAIL_K}×ATR / {HORIZON_EDGE_H}h, regime-favored size ×{EDGE_SIZE_MULT:g}"),
             "open_positions": [_view(p) for p in open_pos],
             "recent_closes": [{k: p.get(k) for k in ("id", "asset", "dir", "exit", "exit_reason",
