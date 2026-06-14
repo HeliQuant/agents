@@ -48,6 +48,7 @@ STALL_MIN = 0.003           #   followed through (gross < 0.3%) by STALL_H, cut 
                             #   rotting to the 4h cap. Trend-aligned winners that ARE running are spared.
 NEAR_TP_FRAC = 0.80         # near-TP lock: once price is >=80% of the way to TP but hasn't broken through
 NEAR_TP_WAIT_S = 300        #   and stalls there 5 min, take the near-win (don't let it fall back to SL)
+NEAR_TP_MIN_NET = 0.001     #   ...but ONLY lock if the gain clears round-trip cost + this buffer (fee guard)
 TRAIL_K = 1.8               # chandelier trailing-stop distance (xATR) — ratchets toward price on edge trades
 EDGE_SIZE_MULT = 2.0        # edge + regime-favored -> size up 2x (scripts/90: amplifying pays ONLY where edge exists)
 COST_RT = 0.0020
@@ -552,7 +553,12 @@ def step(log=print, open_new=True) -> dict:
             if prog >= NEAR_TP_FRAC:   # near TP OR at/past it — lock the gain if it stalls (don't let the
                 #                        wide trailing stop give a past-TP winner back to a loss)
                 p["near_tp_since"] = p.get("near_tp_since") or _now()
-                if _now() - p["near_tp_since"] >= NEAR_TP_WAIT_S:
+                # FEE-BREAKEVEN GUARD (quantdinger risk_guard pattern): only LOCK a near-TP gain that
+                # actually clears the round-trip cost + a slippage buffer. An 80%-of-a-tight-TP lock can
+                # net NEGATIVE after fees — banking that is a fee-loss disguised as a win. If it doesn't
+                # clear, keep holding (let it reach real TP or be cut by the stop), don't fake a win.
+                gross = (1 if p["dir"] == "LONG" else -1) * (px / p["entry"] - 1)
+                if _now() - p["near_tp_since"] >= NEAR_TP_WAIT_S and gross - COST_RT >= NEAR_TP_MIN_NET:
                     reason = "NEARTP"
             else:
                 p["near_tp_since"] = None   # left the band (fell back or broke TP) -> reset the timer
