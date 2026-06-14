@@ -37,7 +37,10 @@ DATA = ROOT / "data"
 
 # ── config ──
 ASSETS = [a.strip().upper() for a in os.environ.get("ASSETS", "MNT").split(",") if a.strip()]
-INTERVAL_MIN = max(int(os.environ.get("INTERVAL_MIN", "12")), 5)  # multi-key rotation makes a faster cadence safe
+INTERVAL_MIN = max(int(os.environ.get("INTERVAL_MIN", "30")), 5)  # org-cycle gap. 30min (not 12) keeps the
+#   Groq FREE-tier daily quota alive: a 4–24h-horizon firm doesn't need to re-reason every 12min, and ~12min
+#   cadence burned ~1800 calls/day across the 10 keys -> daily exhaustion (429 on every model). The no-LLM
+#   floor is UNAFFECTED (its own 4min open / 60s resolve cadence). Override via INTERVAL_MIN env if needed.
 EXECUTE = os.environ.get("EXECUTE", "0").strip() in {"1", "true", "yes"}
 REFRESH_DATA = os.environ.get("REFRESH_DATA", "1").strip() in {"1", "true", "yes"}
 
