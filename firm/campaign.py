@@ -34,10 +34,18 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 BYBIT = "https://api.bybit.com"
 
-BASKET = ["MNT", "BTC", "ETH", "SOL", "HYPE", "SUI"]
+# Mantle-native flagship (MNT) + a liquid crypto universe (majors + HL-covered alts) so there are always
+# enough clean setups for a lively book. Every added name has Bybit-perp data, Hyperliquid whale coverage,
+# and TV multi-TF. The gates still decide which actually open — more names = more QUALIFYING setups, not a
+# looser bar (quality unchanged; this just widens the opportunity surface so the floor isn't idle in chop).
+BASKET = ["MNT", "BTC", "ETH", "SOL", "HYPE", "SUI", "BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK"]
 TARGET = 1000              # the floor is a CONTINUOUS exploration engine — the first 100 was the proof;
                            #   keep it running (and learning) instead of freezing 'done' at 100
 SLOTS_PER_ASSET = 4
+HEAT_WINDOW = 8             # anti-martingale concurrency: judge the last N realized closes
+SLOTS_HOT = 4              # recent book net-positive (+ ≥50% win) → lean IN (more concurrent per asset)
+SLOTS_BASE = 2             # default per-asset concurrency
+SLOTS_COLD = 1             # recent book net-negative → pull back to a single probe (never 0 — never idle)
 HORIZON_H = 4               # default/fallback max hold: time-exit if neither SL nor TP is hit first
 HORIZON_EDGE_H = 24         # EDGE assets let winners run far longer (backtested: trail+long-cap pays only WITH edge)
 HORIZON_TREND_H = 4         # DYNAMIC: trend-aligned cap (was 8h — too long per ElfaAI "proof comes fast"; trail + near-TP lock manage winners earlier)
@@ -524,6 +532,24 @@ def _whale_opposes(asset: str, direction: str) -> bool:
     return strong and ((direction == "LONG" and stance == "SHORT") or (direction == "SHORT" and stance == "LONG"))
 
 
+def _heat_slots(pos) -> int:
+    """Anti-martingale per-asset concurrency cap: when the recent realized book is WINNING, lean IN (open
+    more concurrent); when it's LOSING, pull back to a single probe. Bounded [SLOTS_COLD, SLOTS_HOT], never
+    0 — the floor must keep probing so the learning loop never starves. This buys ACTIVITY (and faster
+    learning from more samples), NOT edge: a winning streak on a no-edge book is variance, so the lean-in is
+    capped and symmetric with the pull-back."""
+    closed = [p for p in pos if p.get("exit") is not None][-HEAT_WINDOW:]
+    if len(closed) < 4:
+        return SLOTS_BASE
+    net = sum(p.get("pnl_usd") or 0 for p in closed)
+    wins = sum(1 for p in closed if (p.get("pnl_usd") or 0) > 0)
+    if net > 0 and wins >= len(closed) * 0.5:
+        return SLOTS_HOT
+    if net < 0:
+        return SLOTS_COLD
+    return SLOTS_BASE
+
+
 def _range_pos(asset: str) -> float | None:
     """Price's position in the last RANGE_BARS 1h high/low channel: 0 = at range low, 1 = at range
     high. ElfaAI/structure read: the worst major trades come from entering MID-range (chop) — only act
@@ -686,8 +712,8 @@ def step(log=print, open_new=True) -> dict:
     for a in (BASKET if open_new else []):   # resolve-only kicks skip opening (exits stay snappy, no re-trade)
         # NO lifetime cap — fully autonomous, trades continuously. The only throttle is SLOTS_PER_ASSET
         # (max concurrent positions per asset); lifetime opened just keeps climbing.
-        if len([p for p in pos if p["asset"] == a and p.get("exit") is None]) >= SLOTS_PER_ASSET:
-            scan[a] = "slots full"
+        if len([p for p in pos if p["asset"] == a and p.get("exit") is None]) >= _heat_slots(pos):
+            scan[a] = "slots full (heat)"
             continue
         # MACRO EVENT-RISK (research-backed): around FOMC/CPI, BTC/ETH vol ~2x but DIRECTION is noise
         #   (CAR ~0). Abstain in the window — never bet direction into a scheduled macro print.
@@ -1107,6 +1133,7 @@ def status() -> dict:
             "edge_open": len([p for p in open_pos if p.get("edge")]),
             "sized_up_open": len([p for p in open_pos if (p.get("size_usd") or 0) > VIRTUAL_FULL]),
             "skips": s.get("skips", 0), "recent_skips": s.get("recent_skips", [])[-6:],
+            "basket": BASKET, "slots_now": _heat_slots(pos),  # anti-martingale concurrency: hot=lean in, cold=pull back
             "last_scan": s.get("last_scan", {}),  # per-asset reason it did/didn't open last step
             # the ordered entry-quality pipeline a setup must clear before the floor opens it. Surfaced so
             # the deployed gate-set is verifiable (the last three are the 2026-06-14 additions) and self-
