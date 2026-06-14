@@ -34,11 +34,11 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 BYBIT = "https://api.bybit.com"
 
-# Mantle-native flagship (MNT) + a liquid crypto universe (majors + HL-covered alts) so there are always
-# enough clean setups for a lively book. Every added name has Bybit-perp data, Hyperliquid whale coverage,
-# and TV multi-TF. The gates still decide which actually open — more names = more QUALIFYING setups, not a
-# looser bar (quality unchanged; this just widens the opportunity surface so the floor isn't idle in chop).
-BASKET = ["MNT", "BTC", "ETH", "SOL", "HYPE", "SUI", "BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK"]
+# FOCUSED on the Mantle thesis: MNT (flagship) + BTC/ETH/SOL (liquid macro) + HYPE/SUI (high-vol, whale-rich
+# on Hyperliquid). Deliberately NOT a sprawling alt universe — a Mantle firm trading DOGE/ADA dilutes the
+# story and adds no edge (directional is no-edge regardless). Thesis-focus + quality over a livelier book;
+# the anti-martingale heat (below) still leans the book in/out with the realized record.
+BASKET = ["MNT", "BTC", "ETH", "SOL", "HYPE", "SUI"]
 TARGET = 1000              # the floor is a CONTINUOUS exploration engine — the first 100 was the proof;
                            #   keep it running (and learning) instead of freezing 'done' at 100
 SLOTS_PER_ASSET = 4
