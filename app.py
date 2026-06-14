@@ -176,7 +176,7 @@ def _do_cycle() -> bool:
 
 _campaign_last = 0.0
 _campaign_lock = threading.Lock()
-CAMPAIGN_STEP_MIN = int(os.environ.get("CAMPAIGN_STEP_MIN", "8"))
+CAMPAIGN_STEP_MIN = int(os.environ.get("CAMPAIGN_STEP_MIN", "4"))  # 4min: snappier exits (near-TP lock / trail / SL react ~2x faster)
 CAMPAIGN_ON = os.environ.get("CAMPAIGN", "1") == "1"
 
 
