@@ -914,17 +914,40 @@ def step(log=print, open_new=True) -> dict:
         # DYNAMIC horizon: trend-follow gets room, fades stay short. A TV counter-daily 'fade' is forced
         # onto the short fade-horizon — a bounce against the daily trend is a quick scalp, never a hold.
         cap_h = HORIZON_FADE_H if tv_verdict == "fade" else _dynamic_horizon(reasons, edge)
+        # ── LLM PM SIGN-OFF (THE MERGE): the floor proposed this trade from its quantitative gates; the
+        #    LLM Portfolio Manager now APPROVES or VETOES it, fed the LIVE floor signals (fresh — not the
+        #    org's stale feature CSVs). This makes the LLM the gatekeeper on EVERY trade (one call, not the
+        #    full org cycle). Fails OPEN — the algo gates already vetted the setup, so a 429/outage never
+        #    freezes the floor. Toggle with PM_SIGNOFF (default on).
+        pm = {"approve": True, "reason": "signoff off", "model": None}
+        try:
+            from firm import pm_signoff
+            if pm_signoff.enabled():
+                live = {"trend_1h": trend, "stretch_atr": ext["stretch"], "tv_vs_1d": tv_verdict,
+                        "range_pos": rp, "whale": _whale_conviction(a)[0], "size_usd": round(size),
+                        "sl_pct": round(sl_d * 100, 2), "tp_pct": round(tp_d * 100, 2)}
+                pm = pm_signoff.signoff(a, direction, reasons[:4], live)
+        except Exception:  # noqa: BLE001 — fail OPEN; never freeze the floor on an LLM hiccup
+            pm = {"approve": True, "reason": "signoff error (open)", "model": None}
+        if not pm["approve"]:
+            s.setdefault("shadows", []).append({"asset": a, "dir": direction, "gate": "pm-veto",
+                                                "entry": px, "t": _now(), "h": SHADOW_HORIZON_H})
+            del s["shadows"][:-300]
+            scan[a] = f"PM veto — {pm['reason']}"
+            continue
         p = {"id": s["opened"] + 1, "asset": a, "dir": direction, "tier": tier,
              "size_usd": size, "edge": edge, "cap_h": cap_h, "best": px, "trail": sl,
              "entry": px, "sl": sl, "tp": tp, "atr_pct": round(atr * 100, 3),
              "sl_pct": round(sl_d * 100, 2), "tp_pct": round(tp_d * 100, 2),
+             "pm": pm.get("reason"), "pm_model": pm.get("model"),
              "t_open": _now(), "utc_open": datetime.now(timezone.utc).isoformat(),
              "votes": net, "reasons": reasons[:6], "cond": cond, "regime": trend, "exit": None}
         pos.append(p)
         s["opened"] += 1
         ex_txt = f"EDGE×{EDGE_SIZE_MULT:g} trail/{cap_h}h" if (edge and size > base) else ("EDGE trail" if edge else f"{cap_h}h cap")
         log(f"  🟢 CAMPAIGN OPEN #{p['id']} {direction} {a} @ {px} {tier} ${size:g} [{ex_txt}] (net {net:+}) "
-            f"SL {sl} (−{sl_d*100:.1f}%) · TP {tp} (+{tp_d*100:.1f}%) · ATR {atr*100:.2f}% · learned:{learned} — {'; '.join(reasons[:2])}")
+            f"SL {sl} (−{sl_d*100:.1f}%) · TP {tp} (+{tp_d*100:.1f}%) · ATR {atr*100:.2f}% · learned:{learned} · "
+            f"PM✓ {pm['reason'][:48]} — {'; '.join(reasons[:2])}")
         _exec_open(p, log)  # LONGs become REAL Bybit TESTNET spot fills when CAMPAIGN_EXECUTE=1
         scan[a] = f"OPENED {direction} {tier}" + (f" · {learned}" if learned != "n/a" else "")
 
@@ -1104,7 +1127,7 @@ def status() -> dict:
 
     def _view(p: dict) -> dict:
         v = {k: p.get(k) for k in ("id", "asset", "dir", "tier", "entry", "sl", "tp",
-                                   "sl_pct", "tp_pct", "cap_h", "votes", "reasons", "utc_open", "venue")}
+                                   "sl_pct", "tp_pct", "cap_h", "votes", "reasons", "utc_open", "venue", "pm")}
         v["horizon_h"] = p.get("cap_h", HORIZON_H)  # the dynamic timeframe this position trades on (3h fade / 8h trend / 24h edge)
         if p.get("t_open"):
             v["held_h"] = round((_now() - p["t_open"]) / 3600, 2)  # hours held so far (held_h / horizon_h = progress)
