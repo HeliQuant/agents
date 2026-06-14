@@ -732,6 +732,23 @@ def step(log=print, open_new=True) -> dict:
         if any(op["asset"] == a and op.get("exit") is None and op.get("cond") == cond for op in pos):
             scan[a] = "already open (same signal)"
             continue
+        # ── MULTI-TIMEFRAME ALIGNMENT GATE (TradingView consensus, free/anonymous): the floor's signal
+        #    is 1h. When the DAILY (1D) consensus clearly OPPOSES the 1h direction, the entry is a
+        #    counter-daily bounce — the floor's "buy the top in a daily downtrend" bleed. STRONG
+        #    opposition -> abstain (+shadow, so Learning #3 scores whether the gate was right); MILD
+        #    opposition -> take it but FADED, on the short fade-horizon (a quick bounce scalp, not a hold).
+        tv_verdict = None
+        try:
+            from firm import tv_ta
+            tv_verdict = tv_ta.alignment(a, direction)
+        except Exception:  # noqa: BLE001 — best-effort; a feed hiccup never breaks the floor
+            tv_verdict = None
+        if tv_verdict == "abstain":
+            s.setdefault("shadows", []).append({"asset": a, "dir": direction, "gate": "tv-counter-daily",
+                                                "entry": px, "t": _now(), "h": SHADOW_HORIZON_H})
+            del s["shadows"][:-300]
+            scan[a] = "TV: 1h vs 1D strongly opposed (counter-daily) — abstain"
+            continue
         tier = "LEAN" if flipped else ("STRONG" if abs(net) >= 2 else "LEAN")
         atr = _atr_pct(a)
         tp_m, sl_m = _tp_sl_mult(a)   # per-asset reachable TP/SL from MFE/MAE calibration (Learning #1)
@@ -779,7 +796,12 @@ def step(log=print, open_new=True) -> dict:
             size *= boost
             tag = f"{'STRONG' if strong else 'warm'}-asset {ap['win_pct'] * 100:.0f}%/${ap['net']:+.1f}->x{boost:g}"
             learned = tag if learned == "n/a" else f"{learned} · {tag}"
-        cap_h = _dynamic_horizon(reasons, edge)   # DYNAMIC: trend-follow gets room, fades stay short
+        if tv_verdict == "fade":
+            size *= 0.5   # mild counter-daily bounce (TV 1h vs 1D opposed): half size + the short fade-horizon
+            learned = "tv-counter-daily fade" if learned == "n/a" else f"{learned} · tv-fade"
+        # DYNAMIC horizon: trend-follow gets room, fades stay short. A TV counter-daily 'fade' is forced
+        # onto the short fade-horizon — a bounce against the daily trend is a quick scalp, never a hold.
+        cap_h = HORIZON_FADE_H if tv_verdict == "fade" else _dynamic_horizon(reasons, edge)
         p = {"id": s["opened"] + 1, "asset": a, "dir": direction, "tier": tier,
              "size_usd": size, "edge": edge, "cap_h": cap_h, "best": px, "trail": sl,
              "entry": px, "sl": sl, "tp": tp, "atr_pct": round(atr * 100, 3),
