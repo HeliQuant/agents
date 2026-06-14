@@ -40,7 +40,7 @@ TARGET = 1000              # the floor is a CONTINUOUS exploration engine — th
 SLOTS_PER_ASSET = 4
 HORIZON_H = 4               # default/fallback max hold: time-exit if neither SL nor TP is hit first
 HORIZON_EDGE_H = 24         # EDGE assets let winners run far longer (backtested: trail+long-cap pays only WITH edge)
-HORIZON_TREND_H = 8         # DYNAMIC: a trend-aligned trade gets room — trends persist, let it run
+HORIZON_TREND_H = 4         # DYNAMIC: trend-aligned cap (was 8h — too long per ElfaAI "proof comes fast"; trail + near-TP lock manage winners earlier)
 HORIZON_FADE_H = 3          # DYNAMIC: a contrarian/positioning fade is short — it snaps fast or the thesis is wrong
 SHADOW_HORIZON_H = 4        # Learning #3: judge an ABSTAINED setup at this horizon (would taking it have paid?)
 STALL_H = 2.0               # ElfaAI: a BTC/major trade gives proof fast — if a non-edge trade hasn't
@@ -546,8 +546,9 @@ def step(log=print) -> dict:
         #   but STALLED there for NEAR_TP_WAIT without breaking TP -> take the near-win instead of risking
         #   the "almost touched TP then dumped to SL" reversal. Sign-agnostic via progress toward TP.
         if reason is None and p.get("tp") and p["tp"] != p["entry"]:
-            prog = (px - p["entry"]) / (p["tp"] - p["entry"])   # 1.0 = at TP; >=NEAR_TP_FRAC = in the band
-            if NEAR_TP_FRAC <= prog < 1.0:
+            prog = (px - p["entry"]) / (p["tp"] - p["entry"])   # 1.0 = at TP; can exceed 1.0 (trend trade ran past TP)
+            if prog >= NEAR_TP_FRAC:   # near TP OR at/past it — lock the gain if it stalls (don't let the
+                #                        wide trailing stop give a past-TP winner back to a loss)
                 p["near_tp_since"] = p.get("near_tp_since") or _now()
                 if _now() - p["near_tp_since"] >= NEAR_TP_WAIT_S:
                     reason = "NEARTP"
@@ -979,7 +980,7 @@ def status() -> dict:
             if p.get("tp") and p["tp"] != p["entry"]:
                 prog = (now - p["entry"]) / (p["tp"] - p["entry"])
                 v["tp_progress_pct"] = round(max(0.0, min(prog, 1.0)) * 100, 1)  # 0..100% of the way to TP
-                if NEAR_TP_FRAC <= prog < 1.0:  # in the near-TP band — surface the 5-min lock countdown
+                if prog >= NEAR_TP_FRAC:  # in/at/past the near-TP band — surface the 5-min lock countdown
                     v["near_tp"] = True
                     if p.get("near_tp_since"):
                         v["near_tp_lock_in_s"] = max(0, round(NEAR_TP_WAIT_S - (_now() - p["near_tp_since"])))
