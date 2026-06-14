@@ -1108,6 +1108,13 @@ def status() -> dict:
             "sized_up_open": len([p for p in open_pos if (p.get("size_usd") or 0) > VIRTUAL_FULL]),
             "skips": s.get("skips", 0), "recent_skips": s.get("recent_skips", [])[-6:],
             "last_scan": s.get("last_scan", {}),  # per-asset reason it did/didn't open last step
+            # the ordered entry-quality pipeline a setup must clear before the floor opens it. Surfaced so
+            # the deployed gate-set is verifiable (the last three are the 2026-06-14 additions) and self-
+            # documenting. Each fires per-asset (a plain skip), so abstaining one never stalls the others.
+            "entry_gates": ["macro-event de-risk", "deep-cold bench", "cold-cadence throttle",
+                            "mid-range chop (no edge)", "clear-trend required (flat→abstain)",
+                            "don't-fight-trend veto", "TV 1h-vs-1D counter-daily", "smart-money whale veto",
+                            "over-extension (don't chase the tail)", "fee-breakeven near-TP lock"],
             "risk_model": (f"per-asset calibrated SL/TP (MFE/MAE) · dynamic hold: {HORIZON_FADE_H}h fade (fixed TP, snaps) · "
                            f"{HORIZON_TREND_H}h trend (trailing {TRAIL_K}×ATR, lets runners run) · "
                            f"EDGE: trailing / {HORIZON_EDGE_H}h, regime-favored size ×{EDGE_SIZE_MULT:g}"),
