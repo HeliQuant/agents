@@ -80,6 +80,10 @@ ASSET_PROBE_EVERY = 6       # while benched, let 1 probe trade through every N s
 # range EDGE (reclaim/rejection); abstain in the dead zone. Range = last RANGE_BARS 1h highs/lows.
 RANGE_BARS = 24
 RANGE_DEADZONE = (0.34, 0.66)  # price-in-range fraction inside this band = chop → abstain
+MAX_STRETCH_ATR = 2.5       # don't initiate into a move already >this many ATRs past its 1h mean (the
+#                             "buy the exhausted tail" failure — calibration shows TP reached only 0-21%);
+#                             prefer entering a trend EARLY / on a pullback. A decelerating move trips it
+#                             sooner. Per-asset gate -> the loop still opens cleaner setups in OTHER assets.
 MAX_DATA_AGE_H = 12
 ATR_TP_MULT = 2.5           # take-profit at 2.5x the 1h ATR (reachable within the 4h horizon if it trends)
 ATR_SL_MULT = 1.8           # stop-loss at 1.8x ATR -> R:R ~1.4, both sized to the asset's real volatility
@@ -472,6 +476,25 @@ def _trend(asset: str) -> str:
         return "flat"
 
 
+def _extension(asset: str, px: float, atr_pct: float) -> dict:
+    """How far the 1h price has stretched from its 20-bar mean, in ATR units (signed), plus whether the
+    move is DECELERATING. Lets the floor refuse a fresh entry into an already-run move (don't chase the
+    stretched tail; prefer a pullback toward the mean). One 1h-kline read; fails soft to neutral."""
+    try:
+        r = requests.get(f"{BYBIT}/v5/market/kline",
+                         params={"category": "linear", "symbol": f"{asset}USDT", "interval": "60", "limit": "30"},
+                         timeout=12).json()
+        closes = [float(x[4]) for x in reversed(r["result"]["list"])]
+        if len(closes) < 20 or atr_pct <= 0 or px <= 0:
+            return {"stretch": 0.0, "decel": False}
+        sma = sum(closes[-20:]) / 20
+        stretch = (px - sma) / (atr_pct * px)          # signed ATRs above/below the mean
+        recent, earlier = abs(closes[-1] - closes[-3]), abs(closes[-3] - closes[-6])   # 2-bar vs prior 3-bar
+        return {"stretch": round(stretch, 2), "decel": recent < earlier * 0.6}
+    except Exception:  # noqa: BLE001
+        return {"stretch": 0.0, "decel": False}
+
+
 def _range_pos(asset: str) -> float | None:
     """Price's position in the last RANGE_BARS 1h high/low channel: 0 = at range low, 1 = at range
     high. ElfaAI/structure read: the worst major trades come from entering MID-range (chop) — only act
@@ -757,6 +780,22 @@ def step(log=print, open_new=True) -> dict:
             continue
         tier = "LEAN" if flipped else ("STRONG" if abs(net) >= 2 else "LEAN")
         atr = _atr_pct(a)
+        # ── OVER-EXTENSION GATE: refuse a fresh entry into a move that has already run too far. The
+        #    screenshots' failure was a LONG opened at the stretched TOP of a mature up-move, TP needing
+        #    juice that's spent. Abstain when price is >MAX_STRETCH_ATR ATRs past the mean in our direction
+        #    (or moderately stretched AND decelerating) — enter trends EARLY / on a pullback, not the tail.
+        #    Per-asset `continue`: this never stalls the firm — the loop keeps scanning the rest of the
+        #    basket THIS step and opens any cleaner (non-extended) setup elsewhere.
+        ext = _extension(a, px, atr)
+        over = ((direction == "LONG" and ext["stretch"] >= MAX_STRETCH_ATR)
+                or (direction == "SHORT" and ext["stretch"] <= -MAX_STRETCH_ATR)
+                or (ext["decel"] and abs(ext["stretch"]) >= MAX_STRETCH_ATR * 0.6))
+        if over:
+            s.setdefault("shadows", []).append({"asset": a, "dir": direction, "gate": "over-extended",
+                                                "entry": px, "t": _now(), "h": SHADOW_HORIZON_H})
+            del s["shadows"][:-300]
+            scan[a] = f"over-extended ({ext['stretch']:+.1f} ATR past mean{', decel' if ext['decel'] else ''}) — wait for pullback"
+            continue
         tp_m, sl_m = _tp_sl_mult(a)   # per-asset reachable TP/SL from MFE/MAE calibration (Learning #1)
         sl_d, tp_d = sl_m * atr, tp_m * atr
         sgn = 1 if direction == "LONG" else -1
