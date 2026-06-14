@@ -516,6 +516,21 @@ def edges():
         return JSONResponse({"error": str(e)[:120]}, status_code=500)
 
 
+@app.get("/performance")
+def performance():
+    """RIGOROUS analytics on the real trade ledger — Sharpe/Sortino/Calmar/maxDD/profit-factor, computed
+    from resolved trades (return = pnl/size). quantstats-grade metrics, numpy-only (no deploy bloat).
+    Honest: annualized figures are suppressed until the sample is meaningful (>=30d & >=30 trades) so a
+    3-day high-frequency window can't extrapolate to a fantasy CAGR; per-trade stats always show."""
+    _kick_campaign()
+    try:
+        from firm.campaign import trade_log
+        from firm import perf_stats
+        return JSONResponse(perf_stats.compute(trade_log(500).get("trades", [])))
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)[:120]}, status_code=500)
+
+
 @app.get("/sentiment")
 def sentiment():
     """FREE market-context feeds (keyless): crypto Fear & Greed (alternative.me) + BTC network backdrop
