@@ -84,6 +84,9 @@ MAX_STRETCH_ATR = 2.5       # don't initiate into a move already >this many ATRs
 #                             "buy the exhausted tail" failure — calibration shows TP reached only 0-21%);
 #                             prefer entering a trend EARLY / on a pullback. A decelerating move trips it
 #                             sooner. Per-asset gate -> the loop still opens cleaner setups in OTHER assets.
+WHALE_STRONG_USD = 5_000_000  # HL whale net notional (one side) above which their positioning is "high
+WHALE_STRONG_ROE = 30.0       #   conviction" — with >=2 whales + this avg ROE% it weights the vote x2 AND
+#                               vetoes a trend-entry that opposes it (don't buy the top the whales short)
 MAX_DATA_AGE_H = 12
 ATR_TP_MULT = 2.5           # take-profit at 2.5x the 1h ATR (reachable within the 4h horizon if it trends)
 ATR_SL_MULT = 1.8           # stop-loss at 1.8x ATR -> R:R ~1.4, both sized to the asset's real volatility
@@ -326,10 +329,14 @@ def desk_votes(asset: str) -> tuple[int, list[str]]:
     try:
         from firm.hl_whales import whale_read
         wr = whale_read(asset)
-        if wr.get("stance") == "LONG":
-            votes.append((1, "whale:LONG"))
-        elif wr.get("stance") == "SHORT":
-            votes.append((-1, "whale:SHORT"))
+        st = wr.get("stance")
+        if st in ("LONG", "SHORT"):
+            # weight by CONVICTION: a deep, high-ROE whale consensus counts DOUBLE — no longer flattened to
+            # one weak vote the trend-flip then overrides (the "buy the top the whales are shorting" leak).
+            strong = (wr.get("whales_in_position", 0) >= 2
+                      and abs(wr.get("net_usd", 0)) >= WHALE_STRONG_USD and (wr.get("avg_roe_pct") or 0) >= WHALE_STRONG_ROE)
+            w = 2 if strong else 1
+            votes.append((w if st == "LONG" else -w, f"whale:{st}{'!' if strong else ''}"))
     except Exception:  # noqa: BLE001
         pass
     # MANTLE-NATIVE lean for the flagship (MNT + Mantle-eco): capital flowing INTO Mantle (rising chain
@@ -493,6 +500,28 @@ def _extension(asset: str, px: float, atr_pct: float) -> dict:
         return {"stretch": round(stretch, 2), "decel": recent < earlier * 0.6}
     except Exception:  # noqa: BLE001
         return {"stretch": 0.0, "decel": False}
+
+
+def _whale_conviction(asset: str) -> tuple[str, bool]:
+    """HL smart-money stance + whether it's HIGH-CONVICTION (>=2 whales, real net notional, proven ROE).
+    The org's LLM desk already reasons about whale-vs-price divergence; this ports that read to the
+    no-LLM floor as a deterministic gate. Fails soft to NEUTRAL/not-strong (whale_read is cache-cheap)."""
+    try:
+        from firm.hl_whales import whale_read
+        wr = whale_read(asset)
+        strong = (wr.get("whales_in_position", 0) >= 2
+                  and abs(wr.get("net_usd", 0)) >= WHALE_STRONG_USD
+                  and (wr.get("avg_roe_pct") or 0) >= WHALE_STRONG_ROE)
+        return wr.get("stance", "NEUTRAL"), strong
+    except Exception:  # noqa: BLE001
+        return "NEUTRAL", False
+
+
+def _whale_opposes(asset: str, direction: str) -> bool:
+    """True when HIGH-CONVICTION HL smart-money sits AGAINST `direction` — the cue not to buy the top the
+    whales are shorting (nor short the bottom they're buying)."""
+    stance, strong = _whale_conviction(asset)
+    return strong and ((direction == "LONG" and stance == "SHORT") or (direction == "SHORT" and stance == "LONG"))
 
 
 def _range_pos(asset: str) -> float | None:
@@ -777,6 +806,18 @@ def step(log=print, open_new=True) -> dict:
                                                 "entry": px, "t": _now(), "h": SHADOW_HORIZON_H})
             del s["shadows"][:-300]
             scan[a] = "TV: 1h vs 1D strongly opposed (counter-daily) — abstain"
+            continue
+        # ── SMART-MONEY VETO: don't take a trend-entry that HIGH-CONVICTION HL whales are positioned
+        #    AGAINST. "Don't fight the trend" must NOT mean "buy the top the smart money (high ROE) is
+        #    shorting" — the exact screenshot failure (whales −$182M short ETH while the 1h trend was up).
+        #    Abstain (+shadow). The org's LLM reads this as whale-vs-price divergence; this is the floor's
+        #    algorithmic version. Per-asset continue -> the loop still opens cleaner setups elsewhere.
+        if _whale_opposes(a, direction):
+            opp = "SHORT" if direction == "LONG" else "LONG"
+            s.setdefault("shadows", []).append({"asset": a, "dir": direction, "gate": "whale-veto",
+                                                "entry": px, "t": _now(), "h": SHADOW_HORIZON_H})
+            del s["shadows"][:-300]
+            scan[a] = f"smart-money veto — high-conviction HL whales {opp}; not chasing against them"
             continue
         tier = "LEAN" if flipped else ("STRONG" if abs(net) >= 2 else "LEAN")
         atr = _atr_pct(a)
