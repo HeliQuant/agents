@@ -488,8 +488,10 @@ def _range_pos(asset: str) -> float | None:
         return None
 
 
-def step(log=print) -> dict:
+def step(log=print, open_new=True) -> dict:
     """One campaign step: resolve matured positions, open new desk-justified ones. Called by the app
+    loop. open_new=False -> RESOLVE-ONLY (close matured positions, no new opens) so exits stay snappy
+    without re-trading; the full open loop is throttled separately. The resolve below always runs.
     loop every CAMPAIGN_STEP_MIN. Cheap (no LLM): a few HTTP calls + CSV reads."""
     s, pos = _load()
     s["done"] = False  # continuous autonomous floor — clear any stale 'done' so it never freezes
@@ -623,7 +625,7 @@ def step(log=print) -> dict:
 
     # ── open new (desk-justified only) ──
     scan: dict = {}   # per-asset: WHY it did/didn't open this step (diagnostic, surfaced on /campaign)
-    for a in BASKET:
+    for a in (BASKET if open_new else []):   # resolve-only kicks skip opening (exits stay snappy, no re-trade)
         # NO lifetime cap — fully autonomous, trades continuously. The only throttle is SLOTS_PER_ASSET
         # (max concurrent positions per asset); lifetime opened just keeps climbing.
         if len([p for p in pos if p["asset"] == a and p.get("exit") is None]) >= SLOTS_PER_ASSET:

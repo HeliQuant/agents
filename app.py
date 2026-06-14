@@ -174,28 +174,29 @@ def _do_cycle() -> bool:
     return True
 
 
-_campaign_last = 0.0
+_campaign_last = 0.0   # last time NEW positions were opened
+_resolve_last = 0.0    # last time matured positions were RESOLVED (closed)
 _campaign_lock = threading.Lock()
-CAMPAIGN_STEP_MIN = int(os.environ.get("CAMPAIGN_STEP_MIN", "4"))  # 4min: snappier exits (near-TP lock / trail / SL react ~2x faster)
+CAMPAIGN_STEP_MIN = int(os.environ.get("CAMPAIGN_STEP_MIN", "4"))     # open NEW positions at most this often
+RESOLVE_MIN_S = int(os.environ.get("CAMPAIGN_RESOLVE_S", "60"))        # but RESOLVE (close matured: near-TP/SL/trail) this often — snappy exits
 CAMPAIGN_ON = os.environ.get("CAMPAIGN", "1") == "1"
 
 
-def _campaign_step() -> None:
-    """THE LIVE CAMPAIGN (user mandate): open 100 desk-justified PAPER positions at live prices.
-    Cheap (no LLM) and independent of the org-cycle gap — runs every CAMPAIGN_STEP_MIN. Real capital
-    still requires a validated edge; this is the exploration floor at full hunt. firm/campaign.py.
-    Lock-guarded: the internal loop AND opportunistic FE-traffic kicks both call this; the non-blocking
-    lock + time guard mean concurrent callers never double-open (≤1 step / CAMPAIGN_STEP_MIN)."""
-    global _campaign_last
-    if not CAMPAIGN_ON or time.time() - _campaign_last < CAMPAIGN_STEP_MIN * 60:
+def _campaign_step(open_new: bool = True) -> None:
+    """One campaign step. open_new=True -> resolve matured + open new (the latter throttled to
+    CAMPAIGN_STEP_MIN). open_new=False -> RESOLVE-ONLY (close matured positions only) so exits — the
+    near-TP lock, trailing stop, SL/TP — fire within RESOLVE_MIN_S instead of waiting a whole open-cycle.
+    Lock-guarded so concurrent callers (loop + FE-traffic kicks) never overlap. firm/campaign.py."""
+    global _campaign_last, _resolve_last
+    if not CAMPAIGN_ON or not _campaign_lock.acquire(blocking=False):
         return
-    if not _campaign_lock.acquire(blocking=False):
-        return  # a step is already running (loop or another kick) — never stack opens
-    _campaign_last = time.time()
+    _resolve_last = time.time()
+    if open_new:
+        _campaign_last = time.time()
     try:
         from firm.campaign import step
-        st = step(log=log)
-        log(f"[campaign] opened {st.get('opened')}/100 · open {st.get('open_now')} · closed {st.get('closed')} "
+        st = step(log=log, open_new=open_new)
+        log(f"[campaign] {'step' if open_new else 'resolve'} · open {st.get('open_now')} · closed {st.get('closed')} "
             f"· net ${st.get('net_usd'):+.2f}")
     except Exception as e:  # noqa: BLE001
         log(f"[campaign] step error: {str(e)[:120]}")
@@ -204,13 +205,17 @@ def _campaign_step() -> None:
 
 
 def _kick_campaign() -> None:
-    """Opportunistic self-driver: any FE read of /campaign or /trades spawns a campaign step in the
-    BACKGROUND (non-blocking — the read returns the current book instantly; the step lands by the next
-    poll). Makes the floor self-driving on real traffic, so it keeps advancing even when the external
-    keep-alive pinger lapses and Railway suspends the internal loop. Time-guard + lock keep it cheap."""
-    if not CAMPAIGN_ON or time.time() - _campaign_last < CAMPAIGN_STEP_MIN * 60:
+    """Opportunistic self-driver: any FE read of /campaign or /trades (and every keep-alive ping) advances
+    the floor in the BACKGROUND. RESOLVE (close matured positions) fires every RESOLVE_MIN_S so exits stay
+    snappy; OPENING new positions stays throttled to CAMPAIGN_STEP_MIN. Keeps advancing even when Railway
+    suspends the internal loop. Non-blocking + lock-guarded -> cheap."""
+    if not CAMPAIGN_ON:
         return
-    threading.Thread(target=_campaign_step, daemon=True).start()
+    now = time.time()
+    do_open = now - _campaign_last >= CAMPAIGN_STEP_MIN * 60
+    do_resolve = now - _resolve_last >= RESOLVE_MIN_S
+    if do_open or do_resolve:
+        threading.Thread(target=_campaign_step, args=(do_open,), daemon=True).start()
 
 
 def _loop() -> None:
@@ -219,7 +224,7 @@ def _loop() -> None:
     while True:
         if time.time() - STATE["last_cycle_epoch"] >= MIN_CYCLE_GAP_S:
             _do_cycle()
-        _campaign_step()
+        _kick_campaign()   # resolve (close matured) every ~60s · open new every CAMPAIGN_STEP_MIN
         time.sleep(60)  # wake every minute; the gap guard + external /run-cycle decide when a cycle fires
 
 
