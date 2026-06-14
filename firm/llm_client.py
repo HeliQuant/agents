@@ -113,7 +113,11 @@ def _free_pool(base: str, key: str) -> list[str]:
 
 def _models(cfg: dict) -> list[str]:
     if cfg.get("model_override"):
-        return [cfg["model_override"]]
+        # preferred model FIRST, then the rest of the provider's pool as a 429 fallback — never hard-lock a
+        # role to ONE model, or the whole call fails when that model is saturated across every key (the
+        # "429 on llama-3.1-8b-instant key 10/10" failure). Try the preference, then fall through.
+        ov = cfg["model_override"]
+        return [ov] + [m for m in (cfg.get("models") or []) if m != ov]
     if cfg.get("free_pool"):
         pool = _free_pool(cfg["base"], cfg["key"])
         if pool:
@@ -166,7 +170,8 @@ def _complete_one(system, user, max_tokens, start, expect_json, provider, model)
     if not keys:
         raise RuntimeError(f"no API key for provider '{cfg['name']}' — set {cfg['key_env']} (or HQ_API_KEY) in .env")
     models = _models(cfg)
-    pool = models[start % len(models):] + models[:start % len(models)]
+    # keep an explicit model preference FIRST; only rotate the start when picking freely from the pool
+    pool = models if cfg.get("model_override") else models[start % len(models):] + models[:start % len(models)]
     last = "no attempts made"
     for model_ in pool:
         for ki, key in enumerate(keys):
