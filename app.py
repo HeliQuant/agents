@@ -516,6 +516,18 @@ def edges():
         return JSONResponse({"error": str(e)[:120]}, status_code=500)
 
 
+@app.get("/sentiment")
+def sentiment():
+    """FREE market-context feeds (keyless): crypto Fear & Greed (alternative.me) + BTC network backdrop
+    (blockchain.com). CONTEXT, not edge — a slow contrarian mood gauge surfaced for the dashboard, never
+    a hard trade gate. Fails soft (fields go null on a feed outage)."""
+    try:
+        from firm import sentiment_feeds
+        return JSONResponse(sentiment_feeds.read())
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)[:120]}, status_code=500)
+
+
 _ONCHAIN_CACHE: dict = {}   # wallet -> (epoch, payload). Etherscan v2 is rate-limited; cache ~60s.
 FIRM_WALLET = "0x48379F4d1427209311E9FF0bcC4a354953ea631B"  # public anchor wallet (Mantle Sepolia)
 
