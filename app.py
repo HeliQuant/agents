@@ -622,11 +622,17 @@ def carry():
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"error": str(e)[:120]}, status_code=500)
     out = {}
+    asofs = []
     for s in ("HYPEUSDT", "SUIUSDT", "MNTUSDT", "BTCUSDT", "ETHUSDT"):
         c = live_carry(s)
+        if c and c.get("asof"):
+            asofs.append(c["asof"])
         out[s] = ({"carry_ann_pct": c.get("carry_ann_pct"), "crash_class": c.get("crash_class"),
                    "verdict": c.get("verdict"), "source": c.get("source", "live")} if c else None)
-    return JSONResponse({"carry": out,
+    # asof = the STORED compute time (scripts/88 stamps it on the Bybit-reachable local engine; Bybit is
+    # geo-blocked from Railway so the cloud reads it from Supabase). Most-recent push, or null if none
+    # carry a timestamp yet — a null is honest; a fabricated freshness time is not.
+    return JSONResponse({"asof": max(asofs) if asofs else None, "carry": out,
                          "best_harvestable": carry_brief() or "none harvestable now (all thin/lumpy — honest skip)"})
 
 

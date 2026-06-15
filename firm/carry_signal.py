@@ -13,6 +13,8 @@ documented stress-test result (re-run scripts/77 to refresh). Funding-only appro
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
+
 import requests
 
 BYBIT = "https://api.bybit.com"
@@ -96,6 +98,9 @@ def live_carry(symbol: str, lookback_days: int = 60, rf_pct: float = RISK_FREE_P
         "carry_ann_pct": round(gross_ann, 1), "recent7d_ann_pct": round(recent_ann, 1),
         "pos_pct": round(pos_pct, 0), "beats_risk_free": gross_ann > rf_pct,
         "crash_class": cls, "crash_note": why, "attractive": attractive,
+        # asof = real compute time (funding just fetched). scripts/88 persists this dict to Supabase, so the
+        # cloud /carry surfaces TRUE freshness; the cached read passes it through unchanged.
+        "asof": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "verdict": ("HARVEST — rich + crash-robust" if attractive else
                     "skip — beats RF but crash-lumpy (size down)" if (gross_ann > rf_pct and cls == "lumpy") else
                     "skip — thin (below risk-free)"),
