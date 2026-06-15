@@ -110,6 +110,21 @@ def whale_read(asset: str, n: int = DEFAULT_N, window: str = "month") -> dict:
             "avg_roe_pct": avg_roe, "stance": stance, "n_tracked": len(addrs), "brief": brief}
 
 
+def whale_detail(asset: str, n: int = DEFAULT_N, window: str = "month", top: int = 10) -> list[dict]:
+    """The individual top-PnL HL traders HOLDING `asset` right now — address, side, notional, ROE, unrealized PnL.
+    Sorted by notional desc, capped to `top`. Powers the clickable per-whale wallet rows on the /whales page.
+    Reuses the clearinghouse cache warmed by whale_read, so it adds no extra fetches when called alongside it."""
+    rows = []
+    for a in top_addresses(n, window):
+        pos = _position(a, asset)
+        if not pos:
+            continue
+        rows.append({"address": a, "side": pos["side"], "notional_usd": round(pos["notional_usd"]),
+                     "roe_pct": round(pos["roe"] * 100, 1), "upnl_usd": round(pos["upnl_usd"])})
+    rows.sort(key=lambda r: r["notional_usd"], reverse=True)
+    return rows[:top]
+
+
 if __name__ == "__main__":
     import sys
     try:

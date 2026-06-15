@@ -648,15 +648,17 @@ def whales():
     HL-covered asset: net long vs short, notional, avg ROE, stance. Live positions (clearinghouse +
     leaderboard, cached internally), reachable from Railway. MNT is NOT on Hyperliquid -> excluded.
     Honest: HL is ONE venue; on a read error an asset returns a neutral empty shape, never a guess."""
-    from firm.hl_whales import whale_read
+    from firm.hl_whales import whale_read, whale_detail
     assets = []
     for a in ("BTC", "ETH", "SOL", "HYPE", "SUI"):
         try:
-            assets.append(whale_read(a, n=30))
+            r = whale_read(a, n=30)
+            r["whales"] = whale_detail(a, n=30)  # the individual wallets, clickable on the page
+            assets.append(r)
         except Exception:  # noqa: BLE001  -> honest empty shape, never fabricated data
             assets.append({"asset": a, "whales_in_position": 0, "long": 0, "short": 0, "long_usd": 0,
                            "short_usd": 0, "net_usd": 0, "avg_roe_pct": None, "stance": "NEUTRAL",
-                           "n_tracked": 0, "brief": f"{a}: whale read unavailable"})
+                           "n_tracked": 0, "brief": f"{a}: whale read unavailable", "whales": []})
     return JSONResponse({"asof": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                          "source": "Hyperliquid top-30 by 30d PnL — live positions", "assets": assets})
 
