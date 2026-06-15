@@ -250,6 +250,9 @@ def _exec_open(p: dict, log=print) -> None:
             p["exec_qty"] = qty
             p["venue"] = "bybit-testnet-spot"
             log(f"  ⚡ EXECUTED #{p['id']} BUY {qty} {base_coin} on Bybit TESTNET (real fill, fake money)")
+        else:
+            p["venue"] = "paper"  # order placed but filled 0 — this asset's testnet spot is illiquid (e.g. HYPE/SUI)
+            log(f"  [exec] #{p['id']} {sym} buy filled 0 (illiquid testnet spot) — paper only")
     except Exception as e:  # noqa: BLE001
         log(f"  [exec] #{p['id']} {sym} buy skipped ({str(e)[:60]}) — paper only")
 
