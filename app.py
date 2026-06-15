@@ -630,6 +630,25 @@ def carry():
                          "best_harvestable": carry_brief() or "none harvestable now (all thin/lumpy — honest skip)"})
 
 
+@app.get("/whales")
+def whales():
+    """THE WHALE DESK — what Hyperliquid's top-30 traders (by 30d PnL) are DOING right now in each
+    HL-covered asset: net long vs short, notional, avg ROE, stance. Live positions (clearinghouse +
+    leaderboard, cached internally), reachable from Railway. MNT is NOT on Hyperliquid -> excluded.
+    Honest: HL is ONE venue; on a read error an asset returns a neutral empty shape, never a guess."""
+    from firm.hl_whales import whale_read
+    assets = []
+    for a in ("BTC", "ETH", "SOL", "HYPE", "SUI"):
+        try:
+            assets.append(whale_read(a, n=30))
+        except Exception:  # noqa: BLE001  -> honest empty shape, never fabricated data
+            assets.append({"asset": a, "whales_in_position": 0, "long": 0, "short": 0, "long_usd": 0,
+                           "short_usd": 0, "net_usd": 0, "avg_roe_pct": None, "stance": "NEUTRAL",
+                           "n_tracked": 0, "brief": f"{a}: whale read unavailable"})
+    return JSONResponse({"asof": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                         "source": "Hyperliquid top-30 by 30d PnL — live positions", "assets": assets})
+
+
 @app.get("/probe")
 def probe():
     """Test which exchange/data hosts are reachable FROM RAILWAY's IP (answers: can HeliQuant fetch Bybit here?)."""
