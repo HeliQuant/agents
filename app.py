@@ -513,8 +513,14 @@ def edges():
             except (ValueError, OSError):
                 return {}
 
-        return JSONResponse({"validated": _rd("validated_edges.json"),
-                             "candidate": _rd("candidate_edges.json")})
+        validated, candidate = _rd("validated_edges.json"), _rd("candidate_edges.json")
+        # last_run = the latest REAL probation-confirmation bar stored on a candidate (scripts/60 writes
+        # last_confirm_bar on a genuine new-data run). The registry stores no run-wide timestamp, so if no
+        # entry carries one, last_run is null — honest, never a fabricated/mtime-derived time.
+        bars = [e["last_confirm_bar"] for e in {**validated, **candidate}.values()
+                if isinstance(e, dict) and e.get("last_confirm_bar")]
+        return JSONResponse({"validated": validated, "candidate": candidate,
+                             "last_run": max(bars) if bars else None})
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"error": str(e)[:120]}, status_code=500)
 
