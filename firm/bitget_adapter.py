@@ -64,6 +64,30 @@ def supported(asset: str) -> bool:
     return to_symbol(asset) is not None
 
 
+_SPEC_CACHE: dict = {}
+
+
+def contract_spec(asset: str) -> dict | None:
+    sym = to_symbol(asset)
+    if not sym:
+        return None
+    if not _SPEC_CACHE:
+        for c in (_request("GET", "/api/v2/mix/market/contracts", params={"productType": _product()}) or []):
+            _SPEC_CACHE[c["symbol"]] = c
+    return _SPEC_CACHE.get(sym)
+
+
+def round_size(asset: str, usd: float, price: float) -> float:
+    """Base-coin qty for ~`usd` notional at `price`, floored to the contract step (bumped to min)."""
+    spec = contract_spec(asset)
+    if not spec or price <= 0:
+        return 0.0
+    place = int(spec.get("volumePlace", 4) or 4)
+    minq = float(spec.get("minTradeNum", 0) or 0)
+    f = 10 ** place
+    return max(int((usd / price) * f) / f, minq)
+
+
 def _keys() -> tuple[str, str, str]:
     return _env("BITGET_API_KEY"), _env("BITGET_API_SECRET"), _env("BITGET_PASSPHRASE")
 

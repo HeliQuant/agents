@@ -229,8 +229,42 @@ def _exec_perp_open(p: dict, ex, log=print) -> None:
         log(f"  [exec] #{p['id']} {sym} perp {p['dir']} skipped ({str(e)[:70]}) — paper only")
 
 
+def _bitget_open(p: dict, log=print) -> bool:
+    """LONG/SHORT on Bitget DEMO futures (BTC/ETH/XRP) when BITGET_EXECUTE=1. Returns True if it owns
+    this execution (caller skips the Bybit path); False to fall through (asset not on Bitget demo)."""
+    if os.environ.get("BITGET_EXECUTE", "0").strip().lower() not in {"1", "true", "yes"}:
+        return False
+    try:
+        from firm import bitget_adapter as bg
+    except Exception:  # noqa: BLE001
+        return False
+    a = p["asset"]
+    if not bg.supported(a):
+        return False  # MNT/SOL/HYPE/SUI aren't on Bitget demo -> fall through to Bybit/paper
+    try:
+        bg.set_position_mode(True)
+        side = "buy" if p["dir"] == "LONG" else "sell"
+        qty = bg.round_size(a, p["size_usd"], p["entry"])
+        if qty <= 0:
+            p["venue"] = "paper"
+            log(f"  [exec] #{p['id']} {a} bitget qty=0 — paper only")
+            return True
+        r = bg.place_market_order(a, side, qty)
+        p["exec_qty"] = qty
+        p["bitget_symbol"] = bg.to_symbol(a)
+        p["venue"] = "bitget-demo"
+        oid = r.get("orderId") if isinstance(r, dict) else r
+        log(f"  ⚡ EXECUTED #{p['id']} {p['dir']} {qty} {a} on Bitget DEMO ({side}, real fill) order={oid}")
+    except Exception as e:  # noqa: BLE001
+        p["venue"] = "paper"
+        log(f"  [exec] #{p['id']} {a} bitget {p['dir']} skipped ({str(e)[:70]}) — paper only")
+    return True
+
+
 def _exec_open(p: dict, log=print) -> None:
-    """Real Bybit TESTNET fill — LONG -> spot BUY (proven rail); SHORT -> linear PERP Sell-to-open."""
+    """Bitget DEMO (futures, long+short) when BITGET_EXECUTE=1; else Bybit TESTNET (LONG spot / SHORT perp)."""
+    if _bitget_open(p, log):
+        return
     ex = _exec_mod()
     if not ex:
         return
@@ -258,6 +292,18 @@ def _exec_open(p: dict, log=print) -> None:
 
 
 def _exec_close(p: dict, log=print) -> None:
+    if p.get("venue") == "bitget-demo":
+        if not p.get("exec_qty"):
+            return
+        try:
+            from firm import bitget_adapter as bg
+            opp = "sell" if p["dir"] == "LONG" else "buy"  # reduce-only opposite closes the demo position
+            bg.place_market_order(p["asset"], opp, p["exec_qty"], reduce_only=True)
+            p["exec_closed"] = True
+            log(f"  ⚡ EXECUTED #{p['id']} {opp} {p['exec_qty']} {p['asset']} Bitget DEMO close (reduce-only)")
+        except Exception as e:  # noqa: BLE001
+            log(f"  [exec] #{p['id']} bitget close failed ({str(e)[:60]})")
+        return
     ex = _exec_mod()
     if not ex or not p.get("exec_qty"):
         return
