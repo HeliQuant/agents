@@ -711,16 +711,22 @@ def bitget_probe(order: int = 0):
     try:
         from firm import bitget_adapter as bg
         out["bitget"] = bg.status()  # signed private get-balance → connected:true iff account reachable here
-        if order:  # ?order=1 → DECISIVE test: actually place + close a tiny demo order from THIS region
+        if order:  # ?order=1 → DECISIVE test: open+close a tiny demo LONG then SHORT from THIS region
+            res: dict = {}
             try:
                 bg.set_position_mode(True)
-                placed = bg.place_market_order("BTC", "buy", 0.001)
-                time.sleep(1.2)
-                seen = bool(bg.get_positions())
-                out["order_test"] = {"placed": placed, "filled": seen, "closed": bg.flatten(),
-                                     "verdict": "ORDERS WORK FROM THIS REGION" if seen else "placed but no position seen"}
+                for label, side in (("long", "buy"), ("short", "sell")):
+                    bg.place_market_order("BTC", side, 0.001)
+                    time.sleep(1.0)
+                    pos = bg.get_positions()
+                    res[label] = {"opened": (pos[0].get("holdSide") if pos else None) == label,
+                                  "holdSide": pos[0].get("holdSide") if pos else None}
+                    bg.flatten()
+                    time.sleep(0.8)
+                both = res.get("long", {}).get("opened") and res.get("short", {}).get("opened")
+                out["order_test"] = {**res, "verdict": "LONG + SHORT WORK FROM THIS REGION" if both else "partial — check holdSide"}
             except Exception as e:  # noqa: BLE001
-                out["order_test"] = {"verdict": "ORDER BLOCKED/FAILED HERE", "error": str(e)[:200]}
+                out["order_test"] = {**res, "verdict": "ORDER BLOCKED/FAILED HERE", "error": str(e)[:200]}
     except Exception as e:  # noqa: BLE001
         out["bitget"] = {"error": str(e)[:200]}
     return JSONResponse(out)
