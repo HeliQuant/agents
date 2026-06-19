@@ -135,6 +135,24 @@ def place_market_order(asset: str, side: str, size: float, reduce_only: bool = F
     return _request("POST", "/api/v2/mix/order/place-order", body=body)
 
 
+def flatten() -> list:
+    """Close every open position with a market reduce-only order."""
+    done = []
+    for p in get_positions():
+        size = float(p.get("total", 0) or 0)
+        if size <= 0:
+            continue
+        sym = p.get("symbol", "")
+        asset = next((a for a, s in DEMO_SYMBOLS.items() if s == sym), sym)
+        side = "sell" if p.get("holdSide") == "long" else "buy"
+        try:
+            r = place_market_order(asset, side, size, reduce_only=True)
+            done.append({"symbol": sym, "closed": size, "side": side, "orderId": r.get("orderId") if isinstance(r, dict) else r})
+        except Exception as e:  # noqa: BLE001
+            done.append({"symbol": sym, "error": str(e)[:120]})
+    return done
+
+
 def set_position_mode(one_way: bool = True) -> dict:
     """Set one-way (unilateral) vs hedge position mode for the product (fixes order code 40774)."""
     return _request("POST", "/api/v2/mix/account/set-position-mode",
