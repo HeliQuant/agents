@@ -694,6 +694,28 @@ def probe():
     return JSONResponse(out)
 
 
+@app.get("/bitget-probe")
+def bitget_probe():
+    """Can HeliQuant place Bitget DEMO orders FROM THIS REGION? Runs a SIGNED private call (balance) —
+    unlike /probe (reachability only), this answers whether orders are geo-ALLOWED here. Deploy to a
+    Railway region, hit this, and read `bitget.connected`: true = orders allowed; false = blocked here."""
+    import os
+    import requests
+    region = (os.environ.get("RAILWAY_REGION") or os.environ.get("RAILWAY_REPLICA_REGION")
+              or os.environ.get("FLY_REGION") or os.environ.get("REGION") or "unknown")
+    out = {"region": region}
+    try:
+        out["egress_ip"] = requests.get("https://api.ipify.org", timeout=8).text.strip()
+    except Exception:  # noqa: BLE001
+        out["egress_ip"] = None
+    try:
+        from firm import bitget_adapter as bg
+        out["bitget"] = bg.status()  # signed private get-balance → connected:true iff orders allowed here
+    except Exception as e:  # noqa: BLE001
+        out["bitget"] = {"error": str(e)[:200]}
+    return JSONResponse(out)
+
+
 @app.post("/ingest")
 async def ingest(req: Request):
     """CONNECTOR: the local engine (which CAN reach Bybit via WARP) POSTs fresh positioning data here, so
