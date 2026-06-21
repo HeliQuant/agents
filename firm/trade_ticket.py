@@ -124,7 +124,8 @@ def build_levels(direction: str, entry: float, atr: float, dynamic_rr: float,
 
 def size_position(entry: float, sl_dist: float, confidence: str, equity: float,
                   crowding_factor: float = 1.0, *, edge: dict | None = None,
-                  regime_conf: float = 1.0, consensus: float = 1.0, drawdown: float = 0.0) -> dict:
+                  regime_conf: float = 1.0, consensus: float = 1.0, drawdown: float = 0.0,
+                  vol_factor: float = 1.0) -> dict:
     """Dynamic SAFE/AGGRESSIVE sizing. notional = risk$ * (entry/sl_dist) (the backtested engine's
     formula). AGGRESSIVE = fractional-Kelly, unlocked ONLY by a MEASURED, OOS-validated edge with
     enough sample; otherwise SAFE = the bounded conviction band. A drawdown breaker forces SAFE.
@@ -144,6 +145,7 @@ def size_position(entry: float, sl_dist: float, confidence: str, equity: float,
         risk_pct = CONVICTION_RISK.get(str(confidence).lower(), BASE_RISK)
         mode = "SAFE/dd-breaker" if breaker else "SAFE"
     risk_pct *= max(0.0, min(1.0, crowding_factor))                # crowding sizes DOWN only
+    risk_pct *= max(0.0, min(2.0, vol_factor))                     # vol-targeting: high forecast vol -> size DOWN (TimesFM RV, OOS-validated)
     risk_usd = equity * risk_pct
     raw_notional = risk_usd * (entry / sl_dist)
     cap = equity * LEVERAGE_CAP
@@ -159,6 +161,7 @@ def size_position(entry: float, sl_dist: float, confidence: str, equity: float,
         "leverage": round(notional / equity, 2),
         "kelly_fraction_star": round(f_star, 3) if f_star is not None else None,
         "crowding_factor": round(crowding_factor, 2),
+        "vol_factor": round(vol_factor, 2),
         "size_capped": raw_notional > cap,
     }
 
@@ -197,7 +200,8 @@ def build_trade_ticket(ticker: str, direction: str, confidence: str, *, last_pri
                        equity: float = 1000.0, crowding_factor: float = 1.0,
                        crowding_reason: str = "", allowlist: list[str] | None = None,
                        edge: dict | None = None, regime_conf: float = 1.0,
-                       consensus: float = 1.0, drawdown: float = 0.0) -> dict:
+                       consensus: float = 1.0, drawdown: float = 0.0,
+                       vol_factor: float = 1.0, vol_reason: str = "") -> dict:
     """Assemble + gate a full trade ticket from the PM's (direction, conviction) + real structure.
     `edge` (validated/p_win/payoff_b/sample_n) drives SAFE-vs-AGGRESSIVE sizing."""
     if atr is None or atr <= 0:
@@ -205,7 +209,8 @@ def build_trade_ticket(ticker: str, direction: str, confidence: str, *, last_pri
                 "problems": ["atr<=0 (cannot size/level)"], "trade_ticket": None}
     lv = build_levels(direction, last_price, atr, dynamic_rr, swing_low, swing_high)
     sz = size_position(last_price, lv["_sl_dist"], confidence, equity, crowding_factor,
-                       edge=edge, regime_conf=regime_conf, consensus=consensus, drawdown=drawdown)
+                       edge=edge, regime_conf=regime_conf, consensus=consensus, drawdown=drawdown,
+                       vol_factor=vol_factor)
     ticket = {
         "ticker": ticker.upper(),
         "direction": direction.upper(),
@@ -214,6 +219,7 @@ def build_trade_ticket(ticker: str, direction: str, confidence: str, *, last_pri
         **sz,
         "edge_validated": bool((edge or {}).get("validated")),
         "crowding_reason": crowding_reason,
+        "vol_reason": vol_reason,
         "round_trip_fee_pct": round(SWAP_FEE * 2 * 100, 3),
         "framing": "A hypothesis with a defined invalidation — NOT a prediction. Levels from real ATR + "
                    "swing structure; size = SAFE conviction band, or AGGRESSIVE fractional-Kelly only when "

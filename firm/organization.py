@@ -6,14 +6,15 @@ Portfolio Manager synthesizes ALL of them into the most rational decision.
 
   PHASE 0 · OPERATIONS (data steward)   — keeps the org's own data fresh (whale watchlist;
                                           migrates via real GeckoTerminal when stale/bad)
-  PHASE 1 · ANALYSIS (5 specialist desks, each a different model):
+  PHASE 1 · ANALYSIS (10 specialist desks in build_desks, each a different model; + flow-intel & whale
+                      inputs in run_organization = 12 analyst voices total — see build_desks() for the list):
       1. Regime/Technical  — XGBoost regime engine (82.6% OOS) + ADX + dynamic R:R + honest
                              OOS-validation status
       2. Macro (Allora)    — REAL Allora decentralised-AI BTC+ETH 8h price prediction (topics 14, 9)
       3. On-chain/Risk     — whale watchlist health + REAL GoPlus token-security (WMNT)
       4. Research          — external macro via free public APIs (Fear&Greed + global market)
   (Sentiment desk dropped 2026-06-01 — redundant with regime momentum + whale mood, validated near-noise.)
-  PHASE 2 · DECISION (portfolio manager) — synthesize all 5 desks -> ENTER/ABSTAIN, strictly
+  PHASE 2 · DECISION (portfolio manager) — synthesize all 12 analyst voices -> ENTER/ABSTAIN, strictly
                                           within OOS-validated rules.
 
 HONEST BOUNDARY: deterministic tools + real external APIs compute the numbers; the LLM agents
@@ -45,6 +46,9 @@ from firm import elfa_client as elfa  # noqa: E402
 from firm import trade_ticket as tt  # noqa: E402
 from firm.asset_configs import get_config, is_validated  # noqa: E402
 from firm.llm_client import active_provider_info, complete  # noqa: E402
+from firm import carry_signal as carry  # noqa: E402
+from firm import defillama_client as defillama  # noqa: E402
+from firm.timesfm_desk import tool_timesfm, vol_sizing_factor  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("multi_asset", ROOT / "scripts" / "multi_asset.py")
 ma = importlib.util.module_from_spec(_spec)
@@ -371,7 +375,7 @@ ANALYST_SYS = (
 )
 
 PM_SYS = (
-    "You are the Portfolio Manager (head) of HeliQuant. Seven specialist desks each gave a domain view "
+    "You are the Portfolio Manager (head) of HeliQuant. Ten specialist desks each gave a domain view "
     "(Regime/Technical, Macro/Allora, On-chain/Risk, Research, Smart-Money Flow, Smart-Social, OI-Contrarian) plus the validated "
     "engine's status, plus a BULL-vs-BEAR researcher debate. Synthesize EVERYTHING and DECIDE the most rational action. Rules:\n"
     "- Trend-following has NO OOS-validated edge (full-history + rolling WF failed); a pure trend thesis -> ABSTAIN. "
@@ -451,11 +455,59 @@ def run_operations(verbose: bool = True) -> dict:
             "after_health": ({k: after[k] for k in ("total", "keep_fraction", "losers", "data_age_hours", "stale")} if after else None)}
 
 
+def tool_carry(ticker: str) -> dict:
+    """Carry Desk — delta-neutral funding-carry (market-neutral yield, NOT directional)."""
+    sym = f"{ticker.upper().replace('USDT', '')}USDT"
+    try:
+        this = carry.live_carry(sym)
+    except Exception:  # noqa: BLE001
+        this = None
+    best = None
+    for s in ("HYPEUSDT", "SUIUSDT", "MNTUSDT", "BTCUSDT", "ETHUSDT"):
+        try:
+            c = carry.live_carry(s)
+        except Exception:  # noqa: BLE001
+            c = None
+        if c and c.get("attractive") and (best is None or c["carry_ann_pct"] > best["carry_ann_pct"]):
+            best = c
+    return {
+        "asset": ticker.upper(),
+        "this_asset_carry": this,
+        "best_harvestable": ({"symbol": best["symbol"], "carry_ann_pct": best["carry_ann_pct"],
+                              "crash_class": best["crash_class"], "verdict": best["verdict"]} if best else None),
+        "read": carry.carry_brief() or "no harvestable carry above risk-free right now",
+        "caveat": "market-neutral yield option, NOT a directional signal; HYPE/SUI funding-carry validated OOS",
+        "methodology": "trailing perp funding annualized vs risk-free; crash-stress classed",
+    }
+
+
+def tool_defillama(ticker: str) -> dict:
+    """Mantle Fundamentals Desk — DeFiLlama chain TVL / fees / staking yields (ecosystem risk context)."""
+    tvl = defillama.chain_tvl("Mantle") or {}
+    fees = defillama.chain_fees("Mantle") or {}
+    trend = tvl.get("trend", "unknown")
+    return {
+        "asset": ticker.upper(),
+        "mantle_tvl_usd": tvl.get("tvl_usd"),
+        "tvl_chg7d_pct": tvl.get("chg7d_pct"),
+        "tvl_chg30d_pct": tvl.get("chg30d_pct"),
+        "tvl_trend": trend,
+        "fees_24h_usd": fees.get("fees_24h_usd"),
+        "top_staking_yields": defillama.staking_yields("Mantle")[:4],
+        "ecosystem_risk": ("risk-ON (capital inflow)" if trend == "rising"
+                           else "risk-OFF (outflow)" if trend == "falling" else "stable"),
+        "read": defillama.mantle_brief() or "Mantle fundamentals unavailable",
+        "caveat": "advisory ecosystem context (chain-level), not an asset-specific trade signal",
+        "methodology": "DeFiLlama keyless: historical chain TVL + 24h fees + yield pools",
+    }
+
+
 def build_desks(ticker: str) -> list[tuple[str, dict, str]]:
-    """The 7 specialist desks, each with a REAL tool output. (Sentiment desk dropped 2026-06-01:
-    its price-momentum proxy was redundant with the regime engine's momentum features + the whale
-    mood signal, and validated as near-noise — IC ~0.04 MNT, ~0 BTC/ETH. News/social belongs to
-    the Research desk, not a separate sentiment desk.)"""
+    """The 10 specialist desks, each with a REAL tool output. (Sentiment desk dropped 2026-06-01 —
+    redundant with regime momentum + whale mood, validated near-noise; news/social → Research desk.)
+    Carry + Mantle-Fundamentals + TimesFM-Forecast wired into the PM synthesis 2026-06-20 (these real
+    desks previously ran floor/feature-only, so the org synthesized 7 while 'desks' were marketed as more —
+    now reconciled: the PM genuinely synthesizes all 10)."""
     return [
         ("Regime/Technical", tool_regime(ticker), "regime classification + trend strength + dynamic R:R + OOS-validation status"),
         ("Macro (Allora)", tool_macro(), "decentralised-AI macro via Allora BTC+ETH 8h price prediction"),
@@ -464,6 +516,9 @@ def build_desks(ticker: str) -> list[tuple[str, dict, str]]:
         ("Smart-Money Flow", tool_smartmoney(ticker), "dynamic whale/contract flow — Mantle on-chain DEX flow + mETH staking (CONTRACT mode) or majors perp positioning (POSITIONING mode) + Nansen macro smart-money netflow"),
         ("Smart-Social", tool_smartsocial(ticker), "narrative/mindshare via Elfa (smart accounts, not retail) — where crypto attention is rotating"),
         ("OI-Contrarian", tool_oi_contrarian(ticker), "the ONE OOS-validated edge — fade perp OI extremes; validated-edge registry + live signal = the disciplined exception to abstain"),
+        ("Carry", tool_carry(ticker), "delta-neutral funding-carry yield (market-neutral; HYPE/SUI OOS-validated) — advisory, non-directional"),
+        ("Mantle Fundamentals", tool_defillama(ticker), "DeFiLlama Mantle chain TVL trend + 24h fees + staking yields — ecosystem risk-on/off context"),
+        ("TimesFM Vol/Risk", tool_timesfm(ticker), "TimesFM 2.5 next-day realized-VOLATILITY forecast (beats HAR-RV/EWMA OOS, DM p<0.05 on BTC/ETH/SOL) → vol regime + vol-targeting sizing multiplier; + regime-break anomaly + abstain-on-uncertainty. Price direction = context-only (no edge)"),
     ]
 
 
@@ -685,6 +740,7 @@ def finalize_decision(ticker: str, decision: dict, desks: list, reg: dict,
     entry, atr = float(last["close"]), float(last["atr"])
     swing_low, swing_high = _swings(df)
     crowd_f, crowd_why = _crowding_factor(desks)
+    vol_f, vol_why = vol_sizing_factor(ticker)  # vol-targeting: TimesFM RV forecast (OOS-validated) scales size
     edge = _edge_profile(ticker, _regime, dirn)
 
     attempt = 0
@@ -695,6 +751,7 @@ def finalize_decision(ticker: str, decision: dict, desks: list, reg: dict,
             swing_low=swing_low, swing_high=swing_high, equity=1000.0,
             crowding_factor=crowd_f, crowding_reason=crowd_why, allowlist=ASSET_ALLOWLIST,
             edge=edge, regime_conf=0.8, consensus=_consensus(analysts, dirn), drawdown=0.0,
+            vol_factor=vol_f, vol_reason=vol_why,
         )
         if ticket.get("valid"):
             decision["trade_ticket"] = ticket
@@ -707,6 +764,7 @@ def finalize_decision(ticker: str, decision: dict, desks: list, reg: dict,
                 print(f"   TP1 {tp[0]['price']} (R:R {tp[0]['rr']})  TP2 {tp[1]['price']} (R:R {tp[1]['rr']})")
                 print(f"   {ticket.get('mode', 'SAFE')}: risk {ticket['risk_pct']}% -> ${ticket['notional_usd']} "
                       f"({ticket['position_size_pct']}% eq, {ticket.get('leverage')}x)  | {crowd_why}")
+                print(f"   {vol_why}")
             return decision
 
         if attempt >= MAX_TICKET_REPAIR:
@@ -755,7 +813,7 @@ def run_organization(ticker: str, verbose: bool = True, memory_brief: str = "") 
     if verbose:
         print("=" * 74)
         print(f"  HeliQuant — Autonomous Intelligence Organization   |   asset: {ticker}")
-        print(f"  provider: {info['provider']} ({info['style']}) | keys: {info.get('num_keys', 0)} | desks: 7")
+        print(f"  provider: {info['provider']} ({info['style']}) | keys: {info.get('num_keys', 0)} | desks: 10 (+flow-intel & whale = 12 voices)")
         print("=" * 74)
     ops = run_operations(verbose=verbose)
     desks = build_desks(ticker)

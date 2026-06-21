@@ -99,6 +99,31 @@ MAX_DATA_AGE_H = 12
 ATR_TP_MULT = 2.5           # take-profit at 2.5x the 1h ATR (reachable within the 4h horizon if it trends)
 ATR_SL_MULT = 1.8           # stop-loss at 1.8x ATR -> R:R ~1.4, both sized to the asset's real volatility
 ATR_FALLBACK_PCT = 0.006    # 0.6% if ATR can't be measured
+
+# Vol-targeting (TimesFM realized-vol forecast — OOS-validated to beat HAR-RV on BTC/ETH/SOL): high
+# forecast vol -> size DOWN. Flag-gated (HQ_VOL_SIZING=1) + scoped to validated majors; OFF by default
+# (the 200M model is heavy for the always-on cloud floor). Cached 30 min per asset.
+_VOL_CACHE: dict = {}
+
+
+def _vol_factor(asset: str) -> tuple[float, str]:
+    import os
+    import time as _t
+    if os.environ.get("HQ_VOL_SIZING", "0").lower() not in {"1", "true", "yes"}:
+        return 1.0, "vol-sizing off"
+    if asset.upper() not in ("BTC", "ETH", "SOL"):
+        return 1.0, "vol-sizing: not a validated-major"
+    now = _t.time()
+    c = _VOL_CACHE.get(asset)
+    if c and now - c[2] < 1800:
+        return c[0], c[1]
+    try:
+        from firm.timesfm_desk import vol_sizing_factor
+        f, why = vol_sizing_factor(asset)
+    except Exception as e:  # noqa: BLE001
+        f, why = 1.0, f"vol-sizing skipped: {str(e)[:50]}"
+    _VOL_CACHE[asset] = (f, why, now)
+    return f, why
 VIRTUAL_FULL = 100.0
 VIRTUAL_LEAN = 50.0
 
@@ -924,6 +949,8 @@ def step(log=print, open_new=True) -> dict:
         favors = (trend == "down" and direction == "SHORT") or (trend == "up" and direction == "LONG")
         base = VIRTUAL_FULL if tier == "STRONG" else VIRTUAL_LEAN
         size = base * EDGE_SIZE_MULT if (edge and favors) else base
+        _vf, _vf_why = _vol_factor(a)   # vol-targeting (TimesFM RV, OOS-validated majors), flag-gated HQ_VOL_SIZING
+        size *= _vf
         # LEARNED SIZING: fade a condition with a PROVEN-losing record IN THIS REGIME (regime-aware: a
         #   short that bled in an up-market isn't penalised in a down-market). Persists past the 24h ban.
         #   We DON'T size winners up — that needs a validated edge, not luck.
