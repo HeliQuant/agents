@@ -47,6 +47,21 @@
       "tokenId": 11,
       "kind": "Signal",
       "ml": false
+    },
+    "Carry": {
+      "tokenId": 12,
+      "kind": "Signal",
+      "ml": false
+    },
+    "Mantle Fundamentals": {
+      "tokenId": 13,
+      "kind": "Research",
+      "ml": false
+    },
+    "TimesFM Vol/Risk": {
+      "tokenId": 14,
+      "kind": "Risk",
+      "ml": false
     }
   },
   "identity": "0x0fae6342195fdC0007b94fb3293bF56463C55ff3",
