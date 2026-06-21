@@ -740,6 +740,20 @@ def bitget_probe(order: int = 0):
     return JSONResponse(out)
 
 
+@app.get("/bitget-data")
+def bitget_data(asset: str = "BTC", candles: int = 0):
+    """Public Bitget MAINNET market data (keyless) — funding, open-interest, last, 24h vol; optional 1H
+    candles (?asset=BTC&candles=50). A supplementary venue read alongside Bybit."""
+    try:
+        from firm import bitget_adapter as bg
+        out: dict = {"snapshot": bg.market_snapshot(asset)}
+        if candles:
+            out["candles"] = bg.public_candles(asset, "1H", min(int(candles), 200))
+        return JSONResponse(out)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)[:160]}, status_code=200)
+
+
 @app.get("/setup-status")
 def setup_status():
     """Onboarding status — which credential KEY NAMES this engine has on file (never values) + whether

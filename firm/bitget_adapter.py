@@ -141,6 +141,46 @@ def get_ticker(asset: str) -> float:
     return float(row.get("lastPr") or row.get("last") or 0)
 
 
+# ── public market data (keyless · MAINNET) — a venue read alongside Bybit, no API key needed ──
+def _pub_symbol(asset: str) -> str:
+    a = asset.upper().replace("SUSDT", "").replace("USDT", "")
+    return f"{a}USDT"
+
+
+def _public(path: str, params: dict | None = None):
+    """Unsigned public GET (mainnet market data — no key)."""
+    r = requests.get(BASE + path, params=params, timeout=15)
+    j = r.json()
+    if str(j.get("code")) not in {"00000", "0"}:
+        raise RuntimeError(f"Bitget {path} code={j.get('code')} msg={j.get('msg')}")
+    return j.get("data")
+
+
+def market_snapshot(asset: str) -> dict:
+    """Public mainnet ticker (keyless): last, funding rate, open interest, 24h volume + change."""
+    sym = _pub_symbol(asset)
+    d = _public("/api/v2/mix/market/ticker", {"symbol": sym, "productType": "usdt-futures"})
+    t = (d[0] if isinstance(d, list) and d else (d or {})) or {}
+    return {
+        "asset": asset.upper(), "symbol": sym,
+        "last": float(t.get("lastPr") or 0),
+        "funding_rate": float(t.get("fundingRate") or 0),
+        "open_interest": float(t.get("holdingAmount") or 0),
+        "vol_24h": float(t.get("baseVolume") or 0),
+        "change_24h_pct": round(float(t.get("change24h") or 0) * 100, 2),
+        "source": "bitget-mainnet",
+    }
+
+
+def public_candles(asset: str, granularity: str = "1H", limit: int = 100) -> list:
+    """Public mainnet OHLCV (keyless). Returns [{t,o,h,l,c,vol}]."""
+    sym = _pub_symbol(asset)
+    rows = _public("/api/v2/mix/market/candles",
+                   {"symbol": sym, "productType": "usdt-futures", "granularity": granularity, "limit": str(limit)}) or []
+    return [{"t": int(r[0]), "o": float(r[1]), "h": float(r[2]), "l": float(r[3]), "c": float(r[4]), "vol": float(r[5])}
+            for r in rows]
+
+
 def get_positions() -> list:
     return _request("GET", "/api/v2/mix/position/all-position", params={"productType": _product(), "marginCoin": _margin()}) or []
 
