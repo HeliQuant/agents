@@ -35,6 +35,14 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 
+# Load any locally-stored credentials (agents-localReady SQLite) into env BEFORE config reads them.
+# NO-CUSTODY: reads only THIS machine's data/credentials.db (written via /register); never overwrites an
+# env var already set, so Railway / .env always take precedence.
+with contextlib.suppress(Exception):
+    from firm import creds_store as _creds_store
+
+    _creds_store.apply_to_env()
+
 # ── config ──
 ASSETS = [a.strip().upper() for a in os.environ.get("ASSETS", "MNT").split(",") if a.strip()]
 INTERVAL_MIN = max(int(os.environ.get("INTERVAL_MIN", "30")), 5)  # org-cycle gap. 30min (not 12) keeps the
@@ -730,6 +738,40 @@ def bitget_probe(order: int = 0):
     except Exception as e:  # noqa: BLE001
         out["bitget"] = {"error": str(e)[:200]}
     return JSONResponse(out)
+
+
+@app.get("/setup-status")
+def setup_status():
+    """Onboarding status — which credential KEY NAMES this engine has on file (never values) + whether
+    /register is enabled (HQ_SETUP_TOKEN set). The onboarding form reads this to show progress."""
+    from firm import creds_store
+    return JSONResponse({"register_enabled": bool(os.environ.get("HQ_SETUP_TOKEN", "").strip()),
+                         "stored_keys": creds_store.stored_keys()})
+
+
+@app.post("/register")
+async def register(req: Request):
+    """NO-CUSTODY onboarding (agents-localReady). The user's OWN onboarding form POSTs their keys to THEIR
+    OWN engine (this process) over their tunnel — the secrets never touch the shared FE server. Stored in
+    this engine's local SQLite + applied to the running process. Gated by HQ_SETUP_TOKEN (set it when you
+    run the engine; enter it in onboarding). Body: {"token": "...", "creds": {"GROQ_API_KEY": "...", ...}}."""
+    from firm import creds_store
+    setup_token = os.environ.get("HQ_SETUP_TOKEN", "").strip()
+    if not setup_token:
+        return JSONResponse({"error": "register disabled — set HQ_SETUP_TOKEN on the engine to enable onboarding"}, status_code=503)
+    try:
+        body = await req.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "bad json"}, status_code=400)
+    if str(body.get("token", "")) != setup_token:
+        return JSONResponse({"error": "bad or missing setup token"}, status_code=403)
+    creds = body.get("creds")
+    if not isinstance(creds, dict) or not creds:
+        return JSONResponse({"error": "creds must be a non-empty object"}, status_code=400)
+    n = creds_store.save_creds(creds)
+    creds_store.apply_to_env()
+    return JSONResponse({"ok": True, "saved": n, "keys": creds_store.stored_keys(),
+                         "note": "stored in this engine's local SQLite + applied to the running process"})
 
 
 @app.post("/ingest")
