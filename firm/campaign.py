@@ -126,6 +126,7 @@ def _vol_factor(asset: str) -> tuple[float, str]:
     return f, why
 VIRTUAL_FULL = 100.0
 VIRTUAL_LEAN = 50.0
+PAPER_BANKROLL = float(os.environ.get("PAPER_BANKROLL", "10000"))  # paper starting capital for /campaign equity + ROI
 
 _GECKO_IDS = {"MNT": "mantle", "BTC": "bitcoin", "ETH": "ethereum",
               "SOL": "solana", "HYPE": "hyperliquid", "SUI": "sui"}
@@ -1223,10 +1224,31 @@ def status() -> dict:
 
     _fc = s.get("failed_conditions") or {}
     fc_active = len(_fc) if isinstance(_fc, list) else len([1 for e in _fc.values() if _now() < e])
+    # capital / profit summary — paper bankroll → equity → ROI (+ real exchange saldo when keys set)
+    _realized = round(s.get("net_usd", 0.0), 2)
+    _unreal = 0.0
+    for _p in open_pos:
+        _nowp = prices.get(_p["asset"])
+        if _nowp and _p.get("size_usd"):
+            _sgn = 1 if _p["dir"] == "LONG" else -1
+            _unreal += (_sgn * (_nowp / _p["entry"] - 1) - COST_RT) * float(_p.get("size_usd") or 0)
+    _unreal = round(_unreal, 2)
+    _capital = {"starting_capital_usd": PAPER_BANKROLL, "realized_pnl_usd": _realized,
+                "unrealized_pnl_usd": _unreal, "equity_usd": round(PAPER_BANKROLL + _realized + _unreal, 2),
+                "roi_pct": round((_realized + _unreal) / PAPER_BANKROLL * 100, 2) if PAPER_BANKROLL else 0.0,
+                "basis": "paper bankroll at live prices — REAL capital still requires a validated edge"}
+    try:  # real exchange saldo when execution is armed (defensive — never breaks the snapshot)
+        if os.environ.get("BITGET_EXECUTE", "0").strip().lower() in {"1", "true", "yes"}:
+            from firm import bitget_adapter as _bg
+            _av, _eq = _bg.get_balance()
+            _capital["bitget_saldo"] = {"available_usd": round(_av, 2), "equity_usd": round(_eq, 2), "demo": _bg.is_demo()}
+    except Exception:  # noqa: BLE001
+        pass
     return {"target": None, "continuous": True,  # no lifetime cap — fully autonomous, never 'done'
             "opened": s["opened"], "closed": s["closed"], "open_now": len(open_pos),
             "win_pct": round(wr, 1), "net_usd": s["net_usd"], "done": False,
             "testnet_fills": len([p for p in pos if p.get("venue")]),
+            "capital": _capital,  # paper bankroll → equity → ROI summary (+ real exchange saldo when armed)
             "exits_by_reason": by_reason, "failed_conditions": fc_active,
             "horizon_h": HORIZON_H, **diag,
             "edge_open": len([p for p in open_pos if p.get("edge")]),
