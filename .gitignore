@@ -45,3 +45,14 @@ data/btc_orderflow.csv
 data/btc_hyperliquid.csv
 
 data/live_position.json
+
+# local-only — secrets, session transcripts, run artifacts (NEVER commit)
+scripts/*.bat
+*this-session*.txt
+data/_*.log
+data/state/
+data/timesfm_vol_lora/
+data/*_cache.json
+data/campaign_ledger.jsonl
+data/track_record.json
+data/org_run_*.json
