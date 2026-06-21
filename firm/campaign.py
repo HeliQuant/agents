@@ -287,8 +287,81 @@ def _bitget_open(p: dict, log=print) -> bool:
     return True
 
 
+def _bitget_fill(p: dict, log=print) -> dict | None:
+    """Place a Bitget DEMO market order (LONG or SHORT) for p; return a {venue,qty,...} fill or None."""
+    if os.environ.get("BITGET_EXECUTE", "0").strip().lower() not in {"1", "true", "yes"}:
+        return None
+    try:
+        from firm import bitget_adapter as bg
+    except Exception:  # noqa: BLE001
+        return None
+    a = p["asset"]
+    if not bg.supported(a):  # demo = BTC/ETH/XRP only
+        return None
+    try:
+        bg.set_position_mode(True)
+        side = "buy" if p["dir"] == "LONG" else "sell"
+        qty = bg.round_size(a, p["size_usd"], p["entry"])
+        if qty <= 0:
+            return None
+        r = bg.place_market_order(a, side, qty)
+        oid = r.get("orderId") if isinstance(r, dict) else r
+        log(f"  ⚡ EXECUTED #{p['id']} {p['dir']} {qty} {a} on Bitget DEMO ({side}, real fill) order={oid}")
+        return {"venue": "bitget-demo", "qty": qty, "symbol": bg.to_symbol(a)}
+    except Exception as e:  # noqa: BLE001
+        log(f"  [exec] #{p['id']} {a} bitget {p['dir']} skipped ({str(e)[:70]})")
+        return None
+
+
+def _bybit_long_fill(p: dict, log=print) -> dict | None:
+    """Bybit TESTNET spot BUY (LONG only — spot can't short) for p; return a fill or None."""
+    ex = _exec_mod()
+    if not ex:
+        return None
+    sym = f"{p['asset']}USDT"
+    try:
+        s = ex._trade_session()
+        base = p["asset"]
+        bal0 = _wallet_coin(ex, base)
+        ex._ok(s.place_order(category="spot", symbol=sym, side="Buy", orderType="Market",
+                             qty=str(p["size_usd"]), marketUnit="quoteCoin"))
+        time.sleep(0.8)
+        qty = max(0.0, _wallet_coin(ex, base) - bal0)
+        if qty > 0:
+            log(f"  ⚡ EXECUTED #{p['id']} BUY {qty} {base} on Bybit TESTNET (real fill, fake money)")
+            return {"venue": "bybit-testnet-spot", "qty": qty}
+        log(f"  [exec] #{p['id']} {sym} buy filled 0 (illiquid testnet spot)")
+        return None
+    except Exception as e:  # noqa: BLE001
+        log(f"  [exec] #{p['id']} {sym} bybit buy skipped ({str(e)[:60]})")
+        return None
+
+
+def _exec_open_dual(p: dict, log=print) -> None:
+    """LONG -> Bitget demo + Bybit testnet (both); SHORT -> Bitget only; nothing fills -> paper (learning)."""
+    fills: list = []
+    bg = _bitget_fill(p, log)            # Bitget does both LONG and SHORT
+    if bg:
+        fills.append(bg)
+    if p["dir"] == "LONG":               # Bybit testnet spot is LONG-only (can't short)
+        bb = _bybit_long_fill(p, log)
+        if bb:
+            fills.append(bb)
+    if fills:
+        p["fills"] = fills
+        p["venue"] = "+".join(f["venue"] for f in fills)   # e.g. "bitget-demo+bybit-testnet-spot"
+        p["exec_qty"] = fills[0]["qty"]                     # primary qty (back-compat with single-venue views)
+    else:
+        p["venue"] = "paper (learning)"
+        log(f"  [exec] #{p['id']} {p['asset']} {p['dir']} -> paper (learning) — no venue fill")
+
+
 def _exec_open(p: dict, log=print) -> None:
-    """Bitget DEMO (futures, long+short) when BITGET_EXECUTE=1; else Bybit TESTNET (LONG spot / SHORT perp)."""
+    """Dual-venue (HQ_DUAL_VENUE=1): LONG -> Bybit testnet + Bitget demo; SHORT -> Bitget; else paper (learning).
+    Legacy (flag off): Bitget DEMO when BITGET_EXECUTE=1, else Bybit TESTNET (LONG spot / SHORT perp)."""
+    if os.environ.get("HQ_DUAL_VENUE", "0").strip().lower() in {"1", "true", "yes"}:
+        _exec_open_dual(p, log)
+        return
     if _bitget_open(p, log):
         return
     ex = _exec_mod()
@@ -317,45 +390,56 @@ def _exec_open(p: dict, log=print) -> None:
         log(f"  [exec] #{p['id']} {sym} buy skipped ({str(e)[:60]}) — paper only")
 
 
-def _exec_close(p: dict, log=print) -> None:
-    if p.get("venue") == "bitget-demo":
-        if not p.get("exec_qty"):
-            return
+def _close_one(p: dict, venue: str | None, qty: float | None, log=print) -> None:
+    """Close ONE venue fill (reduce-only). No-op on paper / unknown venues."""
+    if not qty or not venue:
+        return
+    if venue == "bitget-demo":
         try:
             from firm import bitget_adapter as bg
             opp = "sell" if p["dir"] == "LONG" else "buy"  # reduce-only opposite closes the demo position
-            bg.place_market_order(p["asset"], opp, p["exec_qty"], reduce_only=True)
-            p["exec_closed"] = True
-            log(f"  ⚡ EXECUTED #{p['id']} {opp} {p['exec_qty']} {p['asset']} Bitget DEMO close (reduce-only)")
+            bg.place_market_order(p["asset"], opp, qty, reduce_only=True)
+            log(f"  ⚡ EXECUTED #{p['id']} {opp} {qty} {p['asset']} Bitget DEMO close (reduce-only)")
         except Exception as e:  # noqa: BLE001
             log(f"  [exec] #{p['id']} bitget close failed ({str(e)[:60]})")
         return
     ex = _exec_mod()
-    if not ex or not p.get("exec_qty"):
+    if not ex:
         return
     sym = f"{p['asset']}USDT"
-    if p.get("venue") == "bybit-testnet-perp":   # close the PERP with an opposite reduce-only order
+    if venue == "bybit-testnet-perp":   # close the PERP with an opposite reduce-only order
         try:
             ex.set_dry_run(False)
             opp = "Buy" if p["dir"] == "SHORT" else "Sell"
-            ex.place_market_order(sym, opp, p["exec_qty"], reduce_only=True)
-            p["exec_closed"] = True
-            log(f"  ⚡ EXECUTED #{p['id']} {opp} {p['exec_qty']} {sym} PERP close on Bybit TESTNET (reduce-only)")
+            ex.place_market_order(sym, opp, qty, reduce_only=True)
+            log(f"  ⚡ EXECUTED #{p['id']} {opp} {qty} {sym} PERP close on Bybit TESTNET (reduce-only)")
         except Exception as e:  # noqa: BLE001
             log(f"  [exec] #{p['id']} {sym} perp close failed ({str(e)[:60]})")
         return
-    try:   # spot close (LONG): SELL the coin we bought
-        s = ex._trade_session()
-        step_sz = _spot_step(sym) or 0.0001
-        qty = int(p["exec_qty"] / step_sz) * step_sz
-        if qty <= 0:
-            return
-        ex._ok(s.place_order(category="spot", symbol=sym, side="Sell", orderType="Market",
-                             qty=str(round(qty, 8))))
-        p["exec_closed"] = True
-        log(f"  ⚡ EXECUTED #{p['id']} SELL {qty} {p['asset']} on Bybit TESTNET (position closed on venue)")
-    except Exception as e:  # noqa: BLE001
-        log(f"  [exec] #{p['id']} {sym} sell failed ({str(e)[:60]}) — paper close stands")
+    if venue == "bybit-testnet-spot":   # spot close (LONG): SELL the coin we bought
+        try:
+            s = ex._trade_session()
+            step_sz = _spot_step(sym) or 0.0001
+            q = int(qty / step_sz) * step_sz
+            if q <= 0:
+                return
+            ex._ok(s.place_order(category="spot", symbol=sym, side="Sell", orderType="Market",
+                                 qty=str(round(q, 8))))
+            log(f"  ⚡ EXECUTED #{p['id']} SELL {q} {p['asset']} on Bybit TESTNET (position closed on venue)")
+        except Exception as e:  # noqa: BLE001
+            log(f"  [exec] #{p['id']} {sym} sell failed ({str(e)[:60]}) — paper close stands")
+
+
+def _exec_close(p: dict, log=print) -> None:
+    """Close every real venue fill (dual-venue aware); falls back to the single venue/exec_qty (legacy)."""
+    fills = p.get("fills")
+    if not fills and p.get("venue") and p.get("exec_qty"):
+        fills = [{"venue": p.get("venue"), "qty": p.get("exec_qty")}]
+    if not fills:
+        return
+    for f in fills:
+        _close_one(p, f.get("venue"), f.get("qty"), log)
+    p["exec_closed"] = True
 
 
 def _wallet_coin(ex, coin: str) -> float:
