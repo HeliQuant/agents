@@ -1,0 +1,71 @@
+{
+  "venue": "bitget-demo-futures",
+  "generated_utc": "2026-06-20T17:33:54+00:00",
+  "note": "HeliQuant desk-driven decisions executed on Bitget demo (no real funds); exploration 4h-class, real prices",
+  "trades": [
+    {
+      "event": "OPEN",
+      "timestamp": "2026-06-20T17:33:43+00:00",
+      "pair": "SBTCSUSDT",
+      "side": "SHORT",
+      "price": 63968.2,
+      "size": 0.0031,
+      "venue": "bitget-demo-futures",
+      "tier": "LEAN",
+      "desk_signals": {
+        "net_votes": -1,
+        "reasons": [
+          "whale:SHORT"
+        ]
+      },
+      "pm_decision": "ENTER SHORT (desk-consensus, exploration class)",
+      "risk_params": {
+        "stop_loss": 65247.56,
+        "take_profit": 61409.47,
+        "rr_ratio": 2.0
+      },
+      "order_id": "1452281532726231041",
+      "balance_susdt": 2979.36
+    },
+    {
+      "event": "OPEN",
+      "timestamp": "2026-06-20T17:33:47+00:00",
+      "pair": "SETHSUSDT",
+      "side": "SHORT",
+      "price": 1729.65,
+      "size": 0.115,
+      "venue": "bitget-demo-futures",
+      "tier": "LEAN",
+      "desk_signals": {
+        "net_votes": -1,
+        "reasons": [
+          "whale:SHORT"
+        ]
+      },
+      "pm_decision": "ENTER SHORT (desk-consensus, exploration class)",
+      "risk_params": {
+        "stop_loss": 1764.24,
+        "take_profit": 1660.46,
+        "rr_ratio": 2.0
+      },
+      "order_id": "1452281552502374403",
+      "balance_susdt": 2959.35
+    },
+    {
+      "event": "CLOSE",
+      "timestamp": "2026-06-20T17:33:52+00:00",
+      "pair": "SBTCSUSDT",
+      "closed_size": 0.0031,
+      "exit_price": 63987.0,
+      "order_id": "1452281575512326145"
+    },
+    {
+      "event": "CLOSE",
+      "timestamp": "2026-06-20T17:33:53+00:00",
+      "pair": "SETHSUSDT",
+      "closed_size": 0.115,
+      "exit_price": 1729.8,
+      "order_id": "1452281578343481345"
+    }
+  ]
+}
