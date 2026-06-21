@@ -266,15 +266,25 @@ def tool_smartmoney(ticker: str) -> dict:
               f"{macro_sm.get('credits_remaining')} credits left)")
     else:
         print(f"   ◦ Nansen smart-money: unavailable — {clean(macro_sm.get('note'))[:70]}")
+    bitget_venue: dict = {}
+    try:  # cross-venue: Bitget mainnet perp funding + open-interest (keyless) — confirmation CONTEXT
+        from firm import bitget_adapter as _bg
+        _snap = _bg.market_snapshot(ticker)
+        bitget_venue = {"funding_rate_pct": round(_snap["funding_rate"] * 100, 4),
+                        "open_interest": _snap["open_interest"], "change_24h_pct": _snap["change_24h_pct"],
+                        "venue": "bitget-mainnet"}
+    except Exception:  # noqa: BLE001
+        pass
     return {
         "asset": sym, "mode": mode, "flow_score_0_100": sig["score"], "read": clean(sig["label"]),
-        "detail": clean(sig["detail"]),
+        "detail": clean(sig["detail"]), "bitget_venue": bitget_venue,
         "macro_smart_money_nansen": ({"read": macro_sm.get("read"), "net24h_total_usd": macro_sm.get("net24h_total_usd"),
                                       "top_funds_flow": macro_sm.get("top", [])[:4], "credits_left": macro_sm.get("credits_remaining")}
                                      if macro_sm.get("available") else {"note": macro_sm.get("note")}),
         "methodology": ("CONTRACT mode = Mantle on-chain DEX flow_bias + liquidity + mETH staking conviction; "
                         "POSITIONING mode = perp OI/funding/long-short (contrarian-to-crowding). "
                         "macro_smart_money = Nansen funds' real netflow on ETH (macro risk-on/off context). "
+                        "bitget_venue = Bitget mainnet perp funding + OI (keyless cross-venue confirmation). "
                         "Aggregate (manipulation-robust), FORWARD-LOGGED -> CONTEXT, not a timing trigger."),
     }
 
