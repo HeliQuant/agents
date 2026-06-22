@@ -1,12 +1,12 @@
 """scripts/85 — LOCAL ENGINE: the data edge that feeds the cloud brain (local half of the connector).
 
-HeliQuant is MODULAR by necessity: exchanges (Bybit/Binance) are geo-blocked from the cloud (Railway:
+HeliQuant is MODULAR by necessity: the exchanges are geo-blocked from the cloud (Railway:
 403/451), so the data + execution edge must run on a machine that CAN reach them (yours, via WARP). This
 engine fetches fresh perp positioning data locally and POSTs it to the deployed cloud's `/ingest` endpoint,
 so the always-on firm self-learns on LIVE data without needing exchange access itself.
 
-JUDGES: run this on your machine (WARP on for Bybit), point it at the cloud URL + token, and the cloud
-brain consumes your feed. Execution stays local too (scripts/82/83) — only the analysis/monitoring is cloud.
+JUDGES: run this on your machine (WARP on to reach the exchange), point it at the cloud URL + token, and the
+cloud brain consumes your feed. Execution stays local too (scripts/82/83) — only the analysis/monitoring is cloud.
 
 Setup:  set CLOUD_URL and INGEST_TOKEN (env or flags). INGEST_TOKEN must match Railway's.
 Run:    python scripts/85_local_engine.py MNT --cloud https://...up.railway.app --once
@@ -33,9 +33,9 @@ def push_once(cloud: str, token: str, assets: list[str]) -> None:
     for a in assets:
         a = a.upper()
         try:
-            coll.collect(a)  # fetch fresh Bybit positioning -> data/{a}_positioning.csv (needs WARP)
+            coll.collect(a)  # fetch fresh exchange positioning -> data/{a}_positioning.csv (needs WARP)
         except Exception as e:  # noqa: BLE001
-            print(f"  {a}: fetch FAILED ({str(e)[:70]}) — is WARP on / Bybit reachable?"); continue
+            print(f"  {a}: fetch FAILED ({str(e)[:70]}) — is WARP on / the exchange reachable?"); continue
         f = ROOT / "data" / f"{a.lower()}_positioning.csv"
         if not f.exists():
             print(f"  {a}: no csv produced — skip"); continue

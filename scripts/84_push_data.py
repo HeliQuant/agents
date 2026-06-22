@@ -1,7 +1,7 @@
-"""scripts/84 — DATA BRIDGE: keep the always-on cloud loop fed with fresh Bybit data.
+"""scripts/84 — DATA BRIDGE: keep the always-on cloud loop fed with fresh exchange data.
 
-Bybit (and Binance) are CloudFront/geo-BLOCKED from Railway's IP (verified via /probe: 403/451), but they
-work fine from your LOCAL machine (Bybit via WARP). So this machine acts as the gateway: it fetches fresh
+The exchanges are CloudFront/geo-BLOCKED from Railway's IP (verified via /probe: 403/451), but they
+work fine from your LOCAL machine (via WARP). So this machine acts as the gateway: it fetches fresh
 perp positioning data (public data — nothing sketchy), commits it, and pushes to HeliQuant/agents. Railway
 auto-deploys on push, and the cloud loop re-validates / self-learns on the NEW data.
 
@@ -32,7 +32,7 @@ def main():
     except Exception:  # noqa: BLE001
         pass
     assets = [a.upper() for a in sys.argv[1:]] or ["MNT"]
-    print(f"DATA BRIDGE — fetching fresh Bybit positioning for {assets} (needs WARP on for Bybit)\n")
+    print(f"DATA BRIDGE — fetching fresh exchange positioning for {assets} (needs WARP on to reach the exchange)\n")
 
     from importlib import import_module
     coll = import_module("scripts.73_collect_alt")
@@ -42,10 +42,10 @@ def main():
             coll.collect(a)  # writes data/{a.lower()}_positioning.csv
             fetched.append(a)
         except Exception as e:  # noqa: BLE001
-            print(f"  {a} FETCH FAILED: {str(e)[:80]} (Bybit reachable? WARP on?)")
+            print(f"  {a} FETCH FAILED: {str(e)[:80]} (exchange reachable? WARP on?)")
 
     if not fetched:
-        print("\nnothing fetched — is WARP on / Bybit reachable? Aborting (no push).")
+        print("\nnothing fetched — is WARP on / the exchange reachable? Aborting (no push).")
         return 1
 
     # stage only the positioning CSVs we refreshed, then commit + push

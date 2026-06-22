@@ -21,22 +21,27 @@ from pathlib import Path
 import numpy as np
 import requests
 
-BYBIT = "https://api.bybit.com"
+EXCHANGE_API = "https://api.bitget.com"
+PRODUCT_TYPE = "usdt-futures"
+GRAN = "1H"  # interval=="60" -> hourly granularity
+# map the two candle series we need to the exchange's v2 mix endpoints
+_CANDLE_EP = {"market": "/api/v2/mix/market/candles", "index": "/api/v2/mix/market/history-index-candles"}
 FEE = 0.00055
 LEGS = 4
 RF = 5.0
 
 
-def _kline(path, symbol, days=365, interval="60"):
+def _kline(kind, symbol, days=365, interval="60"):
+    ep = _CANDLE_EP.get(kind, _CANDLE_EP["market"])
     now = int(time.time() * 1000); start = now - days * 86400 * 1000
     rows = {}; end = now
     for _ in range(30):
         try:
-            j = requests.get(BYBIT + path, params={"category": "linear", "symbol": symbol,
-                                                   "interval": interval, "limit": 1000, "end": end}, timeout=20).json()
+            j = requests.get(EXCHANGE_API + ep, params={"symbol": symbol, "productType": PRODUCT_TYPE,
+                                                         "granularity": GRAN, "limit": 1000, "endTime": end}, timeout=20).json()
         except Exception:  # noqa: BLE001
             break
-        lst = j.get("result", {}).get("list", [])
+        lst = j.get("data", []) or []  # oldest-first [ts, o, h, l, c, ...]; close at index 4
         if not lst:
             break
         for k in lst:
@@ -50,28 +55,30 @@ def _kline(path, symbol, days=365, interval="60"):
 
 def _funding(symbol, days=365):
     now = int(time.time() * 1000); start = now - days * 86400 * 1000
-    rows = {}; cur = now
-    for _ in range(30):
+    rows = {}
+    for pg in range(1, 31):  # funding history paginated by incrementing pageNo (newest-first)
         try:
-            j = requests.get(BYBIT + "/v5/market/funding/history",
-                             params={"category": "linear", "symbol": symbol, "limit": 200, "endTime": cur}, timeout=20).json()
+            j = requests.get(EXCHANGE_API + "/api/v2/mix/market/history-fund-rate",
+                             params={"symbol": symbol, "productType": PRODUCT_TYPE,
+                                     "pageSize": 100, "pageNo": pg}, timeout=20).json()
         except Exception:  # noqa: BLE001
             break
-        lst = j.get("result", {}).get("list", [])
+        lst = j.get("data", []) or []
         if not lst:
             break
         for x in lst:
-            rows[int(x["fundingRateTimestamp"])] = float(x["fundingRate"])
-        oldest = min(int(x["fundingRateTimestamp"]) for x in lst)
-        if oldest <= start or oldest >= cur:
+            rows[int(x["fundingTime"])] = float(x["fundingRate"])
+        oldest = min(int(x["fundingTime"]) for x in lst)
+        if oldest <= start:
             break
-        cur = oldest - 1; time.sleep(0.08)
-    return np.array(sorted(rows)), np.array([rows[t] for t in sorted(rows)])
+        time.sleep(0.08)
+    keep = sorted(t for t in rows if t >= start)
+    return np.array(keep), np.array([rows[t] for t in keep])
 
 
 def analyze(symbol):
-    pt, pp = _kline("/v5/market/kline", symbol)
-    it, ip = _kline("/v5/market/index-price-kline", symbol)
+    pt, pp = _kline("market", symbol)
+    it, ip = _kline("index", symbol)
     ft, fr = _funding(symbol)
     if len(pt) < 500 or len(it) < 500 or len(fr) < 50:
         print(f"{symbol}: insufficient data"); return

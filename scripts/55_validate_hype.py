@@ -98,7 +98,7 @@ def main() -> None:
             "edge": "oi_contrarian", "asset": TICKER, "validated": True,
             "p_win": round(r["p_win"], 4), "payoff_b": r["payoff_b"], "sample_n": r["trades"],
             "oos_roi_pct": round(r["oos_roi"], 2),
-            "note": ("OI-contrarian, OOS (non-overlap 24h, cost-aware, Bybit HYPEUSDT perp). "
+            "note": ("OI-contrarian, OOS (non-overlap 24h, cost-aware, exchange HYPEUSDT perp). "
                      f"Rolling robustness {pos_roi}/4 folds +ROI -> caveated; sizing gates on sample_n>=20."),
         }
         edges_path.write_text(json.dumps(edges, indent=2))

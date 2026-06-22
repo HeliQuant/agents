@@ -1,7 +1,7 @@
-"""scripts/81 — LIVE spot execution STRESS TEST: N buy+sell round-trips per asset on Bybit testnet.
+"""scripts/81 — LIVE spot execution STRESS TEST: N buy+sell round-trips per asset on the exchange testnet.
 
-Proves the executor handles real volume on a live venue (Bybit SPOT — derivatives are geo-banned, spot is
-not). Each round-trip = market BUY $notional + market SELL it back; both legs are REAL fills. Skips any
+Proves the executor handles real volume on a live venue (exchange SPOT — derivatives are geo-banned, spot
+is not). Each round-trip = market BUY $notional + market SELL it back; both legs are REAL fills. Skips any
 asset with an empty testnet orderbook (e.g. HYPE has no testnet liquidity). Logs fills, failures, and the
 cumulative cost (USDT delta).
 
@@ -23,7 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from firm import bybit_executor as ex  # noqa: E402
 
-BYBIT = "https://api-testnet.bybit.com"
+# the executor signs against this venue; auxiliary market reads below must use the SAME testnet host
+EXCHANGE_TESTNET = "https://api-testnet.bybit.com"
 
 
 def _usdt() -> float:
@@ -45,13 +46,13 @@ def _coin(coin: str) -> float:
 
 
 def _orderbook_liquid(symbol: str) -> bool:
-    j = requests.get(BYBIT + "/v5/market/orderbook", params={"category": "spot", "symbol": symbol, "limit": 1}, timeout=10).json()
+    j = requests.get(EXCHANGE_TESTNET + "/v5/market/orderbook", params={"category": "spot", "symbol": symbol, "limit": 1}, timeout=10).json()
     r = j.get("result", {})
     return bool(r.get("b")) and bool(r.get("a"))
 
 
 def _base_precision(symbol: str) -> float:
-    it = requests.get(BYBIT + "/v5/market/instruments-info", params={"category": "spot", "symbol": symbol}, timeout=10).json()["result"]["list"][0]
+    it = requests.get(EXCHANGE_TESTNET + "/v5/market/instruments-info", params={"category": "spot", "symbol": symbol}, timeout=10).json()["result"]["list"][0]
     return float(it["lotSizeFilter"]["basePrecision"])
 
 
@@ -134,7 +135,7 @@ def main():
             print(f"  {r['symbol']:9} SKIPPED (no testnet liquidity)")
         else:
             print(f"  {r['symbol']:9} {r['filled']} real round-trips filled | cost ${r['usdt_cost']} ({r['cost_per_trade_bps']} bps/trip)")
-    print("\nProof: HeliQuant executes real spot orders at volume on Bybit (a Mantle sponsor venue).")
+    print("\nProof: HeliQuant executes real spot orders at volume on the exchange (a live sponsor venue).")
     print("Cost is the bid-ask spread — exactly why an edge must beat costs (the lesson from every backtest).")
 
 

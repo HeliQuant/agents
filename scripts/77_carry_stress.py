@@ -23,19 +23,24 @@ import pandas as pd
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
-BYBIT = "https://api.bybit.com"
+EXCHANGE_API = "https://api.bitget.com"
+PRODUCT_TYPE = "usdt-futures"
+GRAN = "1H"  # interval=="60" -> hourly granularity
+# map the two candle series we need to the exchange's v2 mix endpoints
+_CANDLE_EP = {"market": "/api/v2/mix/market/candles", "index": "/api/v2/mix/market/history-index-candles"}
 
 
-def _kline(path: str, symbol: str, days: int = 365, interval: str = "60") -> pd.DataFrame:
+def _kline(kind: str, symbol: str, days: int = 365, interval: str = "60") -> pd.DataFrame:
+    ep = _CANDLE_EP.get(kind, _CANDLE_EP["market"])
     now = int(time.time() * 1000); start = now - days * 86400 * 1000
     rows: dict[int, float] = {}; end = now
     for _ in range(30):
         try:
-            j = requests.get(BYBIT + path, params={"category": "linear", "symbol": symbol,
-                                                   "interval": interval, "limit": 1000, "end": end}, timeout=20).json()
+            j = requests.get(EXCHANGE_API + ep, params={"symbol": symbol, "productType": PRODUCT_TYPE,
+                                                         "granularity": GRAN, "limit": 1000, "endTime": end}, timeout=20).json()
         except Exception:  # noqa: BLE001
             break
-        lst = j.get("result", {}).get("list", [])
+        lst = j.get("data", []) or []  # oldest-first [ts, o, h, l, c, ...]; close at index 4
         if not lst:
             break
         for k in lst:
@@ -50,29 +55,30 @@ def _kline(path: str, symbol: str, days: int = 365, interval: str = "60") -> pd.
 
 def _funding(symbol: str, days: int = 365):
     now = int(time.time() * 1000); start = now - days * 86400 * 1000
-    rows = {}; cur = now
-    for _ in range(30):
+    rows = {}
+    for pg in range(1, 31):  # funding history paginated by incrementing pageNo (newest-first)
         try:
-            j = requests.get(BYBIT + "/v5/market/funding/history",
-                             params={"category": "linear", "symbol": symbol, "limit": 200, "endTime": cur}, timeout=20).json()
+            j = requests.get(EXCHANGE_API + "/api/v2/mix/market/history-fund-rate",
+                             params={"symbol": symbol, "productType": PRODUCT_TYPE,
+                                     "pageSize": 100, "pageNo": pg}, timeout=20).json()
         except Exception:  # noqa: BLE001
             break
-        lst = j.get("result", {}).get("list", [])
+        lst = j.get("data", []) or []
         if not lst:
             break
         for x in lst:
-            rows[int(x["fundingRateTimestamp"])] = float(x["fundingRate"])
-        oldest = min(int(x["fundingRateTimestamp"]) for x in lst)
-        if oldest <= start or oldest >= cur:
+            rows[int(x["fundingTime"])] = float(x["fundingRate"])
+        oldest = min(int(x["fundingTime"]) for x in lst)
+        if oldest <= start:
             break
-        cur = oldest - 1; time.sleep(0.1)
-    it = sorted(rows.items())
+        time.sleep(0.1)
+    it = sorted((t, r) for t, r in rows.items() if t >= start)
     return np.array([t for t, _ in it]), np.array([r for _, r in it])
 
 
 def stress(symbol: str):
-    perp = _kline("/v5/market/kline", symbol)
-    idx = _kline("/v5/market/index-price-kline", symbol)
+    perp = _kline("market", symbol)
+    idx = _kline("index", symbol)
     if perp.empty or idx.empty:
         print(f"{symbol:10} no perp/index data"); return
     df = pd.merge(perp, idx, on="t", suffixes=("_perp", "_idx")).sort_values("t").reset_index(drop=True)

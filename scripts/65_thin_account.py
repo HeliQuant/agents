@@ -89,7 +89,7 @@ def main():
     print("  • HYPE's +92% is a MIRAGE we refuse to bank: one fold carries it; held as a paper candidate.")
     print("  • A $100 account does NOT 'fly further' than $10k — % is scale-invariant. Thin capital's")
     print("    only real edge is less slippage. The lift = validated edge × disciplined leverage, not size.")
-    print("  • Edges hold 24h → '30 min live' = one signal eval, not a trade sequence; real Bybit orders")
+    print("  • Edges hold 24h → '30 min live' = one signal eval, not a trade sequence; real exchange orders")
     print("    are geo-blocked. This is the edges replayed on REAL data, OOS — the honest 'how far it flies'.")
 
 

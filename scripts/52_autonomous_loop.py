@@ -14,7 +14,7 @@ Modes:
   --interval SEC --ticker T    Always-on live loop (Ctrl-C to stop).
 
 Execution here = paper ledger + memory record + Obsidian note (NO risky live swap). The on-chain
-record (Mantle TradingVault) and Bybit-testnet order are the two execution lines, wired separately.
+record (Mantle TradingVault) and the exchange-testnet order are the two execution lines, wired separately.
 """
 from __future__ import annotations
 

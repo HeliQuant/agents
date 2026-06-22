@@ -9,7 +9,7 @@ HONEST framing:
     at -100% (liquidation). Every number is from this run — nothing invented.
   * The LIVE org additionally applies an R:R>=2 structural gate (that's why today's live tick
     ABSTAINED). This statement shows the edge's signals SIZED — the earning power before that extra
-    gate. It is a backtest on real Bybit MNTUSDT data, not a promise of future return.
+    gate. It is a backtest on real exchange MNTUSDT data, not a promise of future return.
 
 Run: python scripts/58_funded_account.py [--capital 1000]
 """
@@ -59,7 +59,7 @@ def main():
     adx_th, adx_hi = np.nanpercentile(adx, 60), np.nanpercentile(adx, 90)
 
     print(f"╔═ HeliQuant — FUNDED ACCOUNT STATEMENT  (validated MNT edge, OUT-OF-SAMPLE) ═╗")
-    print(f"  Modal disetor : ${cap0:,.2f}   |   venue data: real Bybit MNTUSDT perp   |   net of fees\n")
+    print(f"  Modal disetor : ${cap0:,.2f}   |   venue data: real exchange MNTUSDT perp   |   net of fees\n")
     hdr = f"{'#':>2} {'date (UTC)':12} {'dir':5} {'mode':10} {'lev':>5} {'P&L $':>9} {'balance $':>11}"
     print(hdr); print("  " + "-" * (len(hdr) - 1))
 
@@ -101,7 +101,7 @@ def main():
     print(f"  MODAL    : ${cap0:,.2f}")
     print(f"  SALDO    : ${eq:,.2f}")
     print(f"  PROFIT   : ${profit:+,.2f}   ({profit/cap0*100:+.2f}%)   |   max drawdown -{maxdd*100:.1f}%")
-    print(f"\n  (OOS / unseen data · real Bybit MNTUSDT · AGGRESSIVE sizing live · scales linearly with modal)")
+    print(f"\n  (OOS / unseen data · real exchange MNTUSDT · AGGRESSIVE sizing live · scales linearly with modal)")
     print(f"  (Canonical un-leveraged validated edge = +28.91% / 34 trades — see scripts/55.)")
 
 

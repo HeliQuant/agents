@@ -1,8 +1,8 @@
-"""scripts/80 — execute the delta-neutral HYPE CARRY on Bybit testnet (long spot + short perp).
+"""scripts/80 — execute the delta-neutral HYPE CARRY on the exchange testnet (long spot + short perp).
 
 The ONLY honest way to "live-trade HYPE": NOT the dead directional edge (the firm refuses it), but the
 validated market-neutral CARRY — long HYPE spot + short HYPE perp, equal base size, so price cancels and
-you collect funding. Reuses firm.bybit_executor's signed sessions (pybit). DRY_RUN by default; --live fires.
+you collect funding. Reuses the firm's signed executor sessions (pybit). DRY_RUN by default; --live fires.
 
 HONEST: testnet fills aren't realistic and the carry's ~+5.8%/yr profit accrues via 8h funding over a
 quarter — so this proves the EXECUTION PIPELINE (both legs fire, position is delta-neutral), not a
@@ -38,11 +38,12 @@ def _spot_balance(coin: str) -> float:
 
 
 def _place(category: str, side: str, qty, market_unit: str | None = None) -> dict:
-    """Market order on `category` (spot|linear), DRY_RUN-guarded (mirrors bybit_executor.place_market_order)."""
+    """Market order on `category` (spot|linear), DRY_RUN-guarded (mirrors the executor's place_market_order)."""
     intended = {"category": category, "symbol": SYMBOL, "side": side, "orderType": "Market", "qty": str(qty)}
     if category == "spot" and market_unit:
         intended["marketUnit"] = market_unit  # quoteCoin -> qty is USDT; else base
     unit = intended.get("marketUnit", "baseCoin")
+    # NOTE: signed order routing + the testnet venue below are the executor's path (kept intact).
     if ex.DRY_RUN:
         print(f"  [DRY] {side:4} {category:6} MARKET qty={qty} ({unit}) {SYMBOL} — NOT sent")
         return {"dry_run": True, "intended": intended}
@@ -109,7 +110,7 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:  # noqa: BLE001
         pass
-    ap = argparse.ArgumentParser(description="HeliQuant delta-neutral HYPE carry executor (Bybit testnet).")
+    ap = argparse.ArgumentParser(description="HeliQuant delta-neutral HYPE carry executor (exchange testnet).")
     ap.add_argument("--check", action="store_true", help="auth + USDT balance (read-only)")
     ap.add_argument("--open", action="store_true", help="open the carry (DRY unless --live)")
     ap.add_argument("--close", action="store_true", help="close the carry (DRY unless --live)")
@@ -127,7 +128,7 @@ def main():
             bal = ex.get_wallet_balance()
             print(f"USDT equity={bal.get('equity_usdt')} available={bal.get('available_usdt')} | total_equity={bal.get('total_equity')}")
             if not bal.get("total_equity"):
-                print("\n⚠️  testnet wallet EMPTY — claim test USDT at testnet.bybit.com (Assets) before --live.")
+                print("\n⚠️  testnet wallet EMPTY — claim test USDT from the exchange testnet faucet (Assets) before --live.")
         if args.open:
             open_carry(args.notional, args.live)
         if args.close:

@@ -41,7 +41,7 @@ def compound(rets):
 
 
 def prep(ticker):
-    h = pd.read_csv(ROOT / "data" / f"{ticker.lower()}_bybit_hourly.csv")
+    h = pd.read_csv(ROOT / "data" / f"{ticker.lower()}_perp_hourly.csv")
     feat = ma.add_features(h)
     pos = pd.read_csv(ROOT / "data" / f"{ticker.lower()}_positioning.csv")[["timestamp", "oi"]]
     df = feat.merge(pos, on="timestamp", how="left").sort_values("timestamp").reset_index(drop=True)

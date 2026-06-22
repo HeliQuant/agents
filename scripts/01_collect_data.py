@@ -1,6 +1,6 @@
 """Pull historical OHLCV-like data for MNT/USD from CoinGecko.
 
-Exchange APIs (Binance, Bybit, OKX, KuCoin, MEXC) are TLS-blocked from the
+Exchange APIs (Binance, OKX, KuCoin, MEXC, etc.) are TLS-blocked from the
 deployer's region — CoinGecko free tier is the working source. CoinGecko's
 market_chart endpoint with days=90 returns ~2160 hourly close+volume points,
 which is enough training data. We synthesize an OHLC view by:

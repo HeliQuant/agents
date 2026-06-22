@@ -21,7 +21,11 @@ import requests
 
 ROOT = Path(__file__).resolve().parents[1]
 CALIB = ROOT / "data" / "tp_sl_calibration.json"
-BYBIT = "https://api.bybit.com"
+EXCHANGE_API = "https://api.bitget.com"
+PRODUCT_TYPE = "usdt-futures"
+# map our internal interval codes -> exchange candle granularities
+_GRAN = {"1": "1m", "5": "5m", "15": "15m", "30": "30m", "60": "1H",
+         "120": "2H", "240": "4H", "360": "6H", "720": "12H", "D": "1D", "1D": "1D", "W": "1W"}
 CUR_TP_MULT = 2.5   # what the campaign uses today (ATR_TP_MULT) — the bar we test reachability against
 CUR_SL_MULT = 1.8   # ATR_SL_MULT
 
@@ -34,12 +38,13 @@ def _to_ms(iso: str) -> int | None:
 
 
 def _klines(symbol: str, interval: str, start_ms: int, end_ms: int) -> list:
-    """Bybit linear kline in [start,end] -> chronological list of [start,o,h,l,c,vol,turnover]."""
+    """Exchange perp candles in [start,end] -> chronological list of [start,o,h,l,c,vol,turnover]."""
     try:
-        r = requests.get(f"{BYBIT}/v5/market/kline",
-                         params={"category": "linear", "symbol": f"{symbol}USDT", "interval": interval,
-                                 "start": start_ms, "end": end_ms, "limit": 1000}, timeout=15)
-        return list(reversed((r.json().get("result") or {}).get("list", [])))  # API returns newest-first
+        r = requests.get(f"{EXCHANGE_API}/api/v2/mix/market/candles",
+                         params={"symbol": f"{symbol}USDT", "productType": PRODUCT_TYPE,
+                                 "granularity": _GRAN.get(interval, "1H"),
+                                 "startTime": start_ms, "endTime": end_ms, "limit": 1000}, timeout=15)
+        return r.json().get("data", []) or []  # API returns oldest-first (chronological)
     except Exception:  # noqa: BLE001
         return []
 

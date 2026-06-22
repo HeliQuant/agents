@@ -22,7 +22,7 @@ TOKENS = {  # token contracts to confirm (tokensupply + getcode)
 ACTORS = {  # bridge / CEX — confirm contract + Mantle-asset holdings
     "L2StandardBridge 0x4200..10": "0x4200000000000000000000000000000000000010",
     "Binance HW20": "0xF977814e90dA44bFA03b6295A0616a897441aceC",
-    "Bybit HW4": "0xee5b5b923ffce93a870b3104b7ca09c3db80047a",
+    "CEX hot wallet (exchange)": "0xee5b5b923ffce93a870b3104b7ca09c3db80047a",
 }
 HOLD_CHECK = {"mETH": "0xcDA86A272531e8640cD7F1a92c01839911B90bb0",
               "WMNT": "0x78c1b0C915c4FAA5FffA6CAbf0219DA63d7f4cb8",

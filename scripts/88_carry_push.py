@@ -1,6 +1,6 @@
-"""scripts/88 — CARRY + WHALE feeder: compute locally (Bybit reachable via WARP), persist to SUPABASE.
+"""scripts/88 — CARRY + WHALE feeder: compute locally (exchange reachable via WARP), persist to SUPABASE.
 
-Bybit funding is geo-blocked from the cloud, so the carry desk can't compute there. This runs LOCALLY,
+Exchange funding is geo-blocked from the cloud, so the carry desk can't compute there. This runs LOCALLY,
 computes the live delta-neutral funding carry per symbol, and writes it to Supabase (`hq_state`). The cloud
 carry desk reads it from Supabase — which SURVIVES redeploys (no more re-push after every deploy). Also
 refreshes the Hyperliquid whale-leaderboard cache to Supabase so the cloud never does the heavy 32MB fetch.
@@ -29,9 +29,9 @@ def push_once(symbols: list[str]) -> None:
         try:
             c = live_carry(sym)
         except Exception as e:  # noqa: BLE001
-            print(f"  {sym}: compute FAILED ({str(e)[:60]}) — WARP on / Bybit reachable?"); continue
+            print(f"  {sym}: compute FAILED ({str(e)[:60]}) — WARP on / exchange reachable?"); continue
         if not c or str(c.get("source", "")).startswith("cached"):
-            print(f"  {sym}: no live carry (Bybit unreachable here?)"); continue
+            print(f"  {sym}: no live carry (exchange unreachable here?)"); continue
         backend = state_store.save(f"carry:{sym.upper()}", c)
         print(f"  {sym}: carry {c['carry_ann_pct']:+.1f}%/yr ({c['verdict'][:28]}) -> {backend}")
     # refresh the HL whale-leaderboard cache into Supabase (cloud reads it, skips the 32MB fetch)

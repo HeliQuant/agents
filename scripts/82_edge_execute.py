@@ -4,7 +4,7 @@ Reads the validated edge's LIVE signal FIRST (read the market), and only acts on
 BUYS spot, then HOLDS for the edge's horizon (24h) — exiting when the horizon elapses OR the signal flips.
 This is the opposite of the 100x round-trip stress test (which only paid the spread): a real edge-driven
 position that needs the market to MOVE to profit. Spot-only, so it executes the LONG side of the edge
-(SHORT needs derivatives, which Bybit geo-bans here -> use Hyperliquid). Profit = price move − realistic cost.
+(SHORT needs derivatives, which the exchange geo-bans here -> use Hyperliquid). Profit = price move − realistic cost.
 
 Run:  python scripts/82_edge_execute.py --open  --live --symbol MNTUSDT --notional 100   # enter if signal LONG
       python scripts/82_edge_execute.py --status                                          # show held position
@@ -30,13 +30,14 @@ from firm.edge_lab import H as EDGE_HORIZON_H, live_signal  # noqa: E402
 # faithfully, not a test setting. Change the edge's horizon and the executor follows automatically.
 HORIZON_H = EDGE_HORIZON_H
 POS_FILE = DATA / "live_position.json"
-BYBIT = "https://api-testnet.bybit.com"
+# the executor signs against this venue; the price read below must use the SAME testnet host
+EXCHANGE_TESTNET = "https://api-testnet.bybit.com"
 
 
 def _price(symbol: str) -> float:
     """SPOT last price — MUST match the spot position's leg (testnet perp != spot, mixing them = fake P&L)."""
     import requests
-    return float(requests.get(BYBIT + "/v5/market/tickers", params={"category": "spot", "symbol": symbol}, timeout=10)
+    return float(requests.get(EXCHANGE_TESTNET + "/v5/market/tickers", params={"category": "spot", "symbol": symbol}, timeout=10)
                  .json()["result"]["list"][0]["lastPrice"])
 
 
@@ -140,7 +141,7 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:  # noqa: BLE001
         pass
-    ap = argparse.ArgumentParser(description="Signal-driven buy-and-hold executor (Bybit spot, testnet).")
+    ap = argparse.ArgumentParser(description="Signal-driven buy-and-hold executor (exchange spot, testnet).")
     ap.add_argument("--open", action="store_true")
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--manage", action="store_true")

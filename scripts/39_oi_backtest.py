@@ -4,7 +4,7 @@ Honest, overfit-resistant:
   * NON-OVERLAPPING 24h windows (entry every 24 bars) -> independent samples, no overlap inflation.
   * Direction + quintile thresholds derived ONLY from TRAIN (no test peeking).
   * Rule: oi_chg24 in top quintile -> short (if contrarian) / long (if momentum); bottom quintile -> opposite; else flat.
-  * Net return = pos*raw_return - 2*taker_fee (Bybit perp taker ~0.055%/side). Funding ignored (≈neutral/favorable for contrarian shorts).
+  * Net return = pos*raw_return - 2*taker_fee (exchange perp taker ~0.055%/side). Funding ignored (≈neutral/favorable for contrarian shorts).
   * Report OOS net ROI vs buy&hold over the SAME span.
 
 Run: python scripts/39_oi_backtest.py

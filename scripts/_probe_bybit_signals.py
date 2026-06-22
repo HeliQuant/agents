@@ -1,8 +1,10 @@
-"""What's actually IN Bybit's 3 positioning endpoints (open-interest / funding / long-short)?
-Public, no secret. Perp concepts -> query MNT/BTC linear perps on MAINNET (real positioning data)."""
+"""Research probe — what's IN a perp venue's 3 positioning endpoints (open-interest / funding / long-short)?
+Public, no secret. Perp concepts -> query MNT/BTC linear perps on MAINNET (real positioning data).
+NOTE: dead research. The retail long/short ratio (account-ratio) and an OI history series have no clean
+keyless equivalent on our current venue; this script is kept only as an exploratory artifact."""
 import requests
 
-BASE = "https://api.bybit.com"  # mainnet public = REAL data (no key needed)
+BASE = "https://api.bybit.com"  # legacy perp-venue host probed here (mainnet public, no key) — research only
 
 
 def get(label, path, params):

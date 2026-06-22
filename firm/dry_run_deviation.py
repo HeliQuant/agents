@@ -2,7 +2,7 @@
 
 Every edge in HeliQuant is validated against a MODELED round-trip cost (edge_lab: ~20 bps = fee+spread+
 slippage). That assumption is only honest if it holds in REAL execution. scripts/81 runs live spot round-trips
-on Bybit and logs the realized cost/round-trip (bps); here we compare realized-vs-modeled per asset:
+on the exchange and logs the realized cost/round-trip (bps); here we compare realized-vs-modeled per asset:
   • real <= modeled  -> the backtest cost assumption HOLDS live; the OOS numbers are trustworthy.
   • real >  modeled  -> flag it; edges on that asset must be DISCOUNTED (real execution is worse than modeled).
 Pure honesty layer — proves the validated numbers survive contact with a real order book. No alpha, just truth.
@@ -69,7 +69,7 @@ def brief() -> str:
     parts = [f"{r['symbol']} {r['real_rt_bps']}bps" + ("✓" if r["model_holds"] else f"(+{r['excess_bps']} OVER)")
              for r in rows]
     return (f"EXECUTION-vs-MODEL ({ok}/{len(rows)} within {MODELED_RT_BPS}bps modeled cost): "
-            + ", ".join(parts) + ". Real Bybit fills validate the backtest cost assumption.")
+            + ", ".join(parts) + ". Real exchange fills validate the backtest cost assumption.")
 
 
 if __name__ == "__main__":
@@ -78,4 +78,4 @@ if __name__ == "__main__":
     for r in rows:
         print(f"  {r['symbol']:9} real {r['real_rt_bps']:>5} bps vs model {r['modeled_rt_bps']} bps -> "
               f"{'HOLDS' if r['model_holds'] else 'OVER '} ({r['excess_bps']:+} bps) | {r['verdict']}")
-    print("\n" + (brief() or "no measurements yet — run scripts/81 (live Bybit fills) to populate."))
+    print("\n" + (brief() or "no measurements yet — run scripts/81 (live exchange fills) to populate."))

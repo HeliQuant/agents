@@ -2,7 +2,7 @@
 import requests
 
 TESTS = [
-    ("Bybit", "https://api.bybit.com/v5/market/kline", {"category": "spot", "symbol": "BTCUSDT", "interval": "60", "limit": 2}),
+    ("Exchange (Bitget)", "https://api.bitget.com/api/v2/mix/market/candles", {"symbol": "BTCUSDT", "productType": "usdt-futures", "granularity": "1H", "limit": 2}),
     ("Binance", "https://api.binance.com/api/v3/klines", {"symbol": "BTCUSDT", "interval": "1h", "limit": 2}),
     ("Binance MNT", "https://api.binance.com/api/v3/klines", {"symbol": "MNTUSDT", "interval": "1h", "limit": 2}),
     ("OKX", "https://www.okx.com/api/v5/market/candles", {"instId": "BTC-USDT", "bar": "1H", "limit": "2"}),

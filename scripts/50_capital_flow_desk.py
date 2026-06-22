@@ -2,7 +2,7 @@
 
 Per Mantle asset, combines signals that ACTUALLY WORK on free APIs:
   • DEX flow_bias + liquidity (DexScreener, no key)        → on-chain buy/sell pressure
-  • CEX vs DEX volume split (Bybit, no key)                → wash/synthetic-volume transparency (research tip)
+  • CEX vs DEX volume split (exchange, no key)             → wash/synthetic-volume transparency (research tip)
   • mETH staking conviction (Etherscan L1, $118M-real)     → net-stake (LST conviction)
 Output: per-asset flow READ + preliminary score + forward-log (trend builds over time). Honest: CONTEXT
 for the PM, forward-logged to validate — not a claimed alpha.
@@ -20,13 +20,14 @@ import requests
 
 ROOT = Path(__file__).resolve().parents[1]
 DS = "https://api.dexscreener.com"
-BYBIT = "https://api.bybit.com/v5/market/tickers"
+EXCHANGE_TICKER = "https://api.bitget.com/api/v2/mix/market/ticker"
+PRODUCT_TYPE = "usdt-futures"
 ESCAN = "https://api.etherscan.io/v2/api"
 EKEY = os.environ.get("MANTLESCAN_API_KEY", "")
 METH_STAKING_L1 = "0xe3cBd06D7dadB3F4e6557bAb7EdD924CD1489E8f"
 
 ASSETS = ["WMNT", "mETH", "cmETH", "USDe", "FBTC"]
-BYBIT_SYM = {"WMNT": "MNTUSDT", "mETH": "METHUSDT", "USDe": "USDEUSDT"}  # which have a CEX market
+EXCHANGE_SYM = {"WMNT": "MNTUSDT", "mETH": "METHUSDT", "USDe": "USDEUSDT"}  # which have a CEX market
 
 
 def g(d, *ks):
@@ -50,13 +51,14 @@ def dex(sym):
 
 
 def cex_vol(sym):
-    bs = BYBIT_SYM.get(sym)
+    bs = EXCHANGE_SYM.get(sym)
     if not bs:
         return None
     try:
-        j = requests.get(BYBIT, params={"category": "spot", "symbol": bs}, timeout=15).json()
-        t = j.get("result", {}).get("list", [])
-        return float(t[0]["turnover24h"]) if t else None
+        j = requests.get(EXCHANGE_TICKER, params={"symbol": bs, "productType": PRODUCT_TYPE}, timeout=15).json()
+        data = j.get("data")
+        row = data[0] if isinstance(data, list) and data else (data or {})
+        return float(row["usdtVolume"]) if row.get("usdtVolume") is not None else None
     except Exception:  # noqa: BLE001
         return None
 

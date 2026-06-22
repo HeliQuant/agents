@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 BINANCE = "https://fapi.binance.com/fapi/v1/klines"
 
-FEE = 0.00055        # Binance/Bybit taker ~5.5 bps per side
+FEE = 0.00055        # liquid CEX taker ~5.5 bps per side
 SLIP = 0.00010       # 1 bp/side slippage on liquid 5m BTC (conservative-low)
 COST_PER_SIDE = FEE + SLIP
 TP_MULT, SL_MULT, HORIZON = 1.46, 1.0, 10   # exactly the UAS doc's SL/TP/horizon

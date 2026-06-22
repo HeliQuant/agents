@@ -1,11 +1,13 @@
-"""How DEEP is the history for each Bybit positioning endpoint? (decides backtestability)
-Paginate backward via endTime cursor until exhausted. MNT perp, mainnet."""
+"""Research probe — how DEEP is the history for each perp-venue positioning endpoint? (decides backtestability)
+Paginate backward via endTime cursor until exhausted. MNT perp, mainnet.
+NOTE: dead research. The retail long/short ratio (account-ratio) and an OI history series have no clean
+keyless equivalent on our current venue; this script is kept only as an exploratory artifact."""
 import time
 from datetime import datetime, timezone
 
 import requests
 
-BASE = "https://api.bybit.com"
+BASE = "https://api.bybit.com"  # legacy perp-venue host probed here — research only
 
 
 def depth(label, path, params, ts_key, max_pages):

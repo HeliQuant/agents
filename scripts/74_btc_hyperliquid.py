@@ -1,8 +1,8 @@
 """HeliQuant — BTC edge hunt, round 3: a LESS-EFFICIENT VENUE (scripts/74).
 
-Every BTC signal we tried on Bybit/Binance was fee-eaten or a walk-forward artifact, because those are
-the most-arbitraged BTC venues on earth. Honest new angle: **Hyperliquid** is an on-chain perp DEX —
-smaller, younger, less arbitraged. The SAME contrarian edge that dies on Bybit BTC *might* survive here,
+Every BTC signal we tried on centralized venues was fee-eaten or a walk-forward artifact, because those
+are the most-arbitraged BTC venues on earth. Honest new angle: **Hyperliquid** is an on-chain perp DEX —
+smaller, younger, less arbitraged. The SAME contrarian edge that dies on centralized BTC *might* survive here,
 and HL exposes a signal the CEXes don't: **premium** (perp price vs oracle) — a direct crowd-positioning
 gauge. We test funding_fade AND premium_fade on HL BTC under the EXACT same gate (cost-aware OOS +
 walk-forward + drop-best-fold). No overfit, no forced trade. Either it clears honestly or BTC stays abstained.

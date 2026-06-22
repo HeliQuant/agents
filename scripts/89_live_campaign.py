@@ -8,7 +8,7 @@ firm's principles and desks." The honest synthesis:
   * PAPER positions cost zero capital — exploration's whole design. This campaign scales it into a
     full hunt: every position is OPENED BY THE DESKS (quantitative ones: flow-intel learned signals,
     z-score extremes on OI/funding/flow/momentum, the live whale read), sized by conviction tier,
-    entered at the LIVE Bybit price, resolved on the 4h move net of 20bps costs, and LEARNED from:
+    entered at the LIVE exchange price, resolved on the 4h move net of 20bps costs, and LEARNED from:
     a losing round logs its condition signatures (never repeated) + a cooldown for that asset.
   * 4h horizon is a DECLARED hypothesis class (intraday flow), distinct from the edge lab's 24h
     validation standard — campaign results feed the lab, they don't skip it.
@@ -46,7 +46,8 @@ VIRTUAL_FULL = 100.0         # virtual $ per STRONG-conviction position
 VIRTUAL_LEAN = 50.0          # virtual $ per LEAN-conviction position
 STATE_F = ROOT / "data" / "campaign_state.json"
 LEDGER_F = ROOT / "data" / "campaign_ledger.jsonl"
-BYBIT = "https://api.bybit.com"
+EXCHANGE_API = "https://api.bitget.com"
+PRODUCT_TYPE = "usdt-futures"
 
 _DEF = {"opened": 0, "closed": 0, "wins": 0, "net_usd": 0.0, "positions": [],
         "failed_conditions": [], "cooldown_until": {}, "rounds": {}}
@@ -85,17 +86,19 @@ def ledger(rec: dict) -> None:
 
 
 def live_price(asset: str) -> float | None:
-    """LIVE last price from Bybit public tickers (real entry/exit marks — not a stale bar)."""
+    """LIVE last price from the exchange public ticker (real entry/exit marks — not a stale bar)."""
     try:
-        r = requests.get(f"{BYBIT}/v5/market/tickers",
-                         params={"category": "linear", "symbol": f"{asset.upper()}USDT"}, timeout=12)
-        return float(r.json()["result"]["list"][0]["lastPrice"])
+        r = requests.get(f"{EXCHANGE_API}/api/v2/mix/market/ticker",
+                         params={"symbol": f"{asset.upper()}USDT", "productType": PRODUCT_TYPE}, timeout=12)
+        data = r.json().get("data")
+        row = data[0] if isinstance(data, list) and data else (data or {})
+        return float(row["lastPr"])
     except Exception:  # noqa: BLE001
         return None
 
 
 def refresh_data(asset: str) -> bool:
-    """Fresh Bybit positioning data -> data/{asset}_positioning.csv (the desks read this)."""
+    """Fresh exchange positioning data -> data/{asset}_positioning.csv (the desks read this)."""
     try:
         import_module("scripts.73_collect_alt").collect(asset.upper())
         return True

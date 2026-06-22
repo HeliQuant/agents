@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-FEE = 0.00055  # Bybit perp taker per side (same as scripts/39)
+FEE = 0.00055  # exchange perp taker per side (same as scripts/39)
 H = 24
 
 

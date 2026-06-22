@@ -1,9 +1,10 @@
-"""Explore Bybit v5 TESTNET endpoints. PUBLIC (market) = no auth. PRIVATE = needs secret (HMAC)."""
+"""Research probe — explore the exchange TESTNET endpoints. PUBLIC (market) = no auth. PRIVATE = needs secret (HMAC).
+NOTE: exploratory artifact. The testnet host below is the same venue the executor signs against (kept intact)."""
 import os
 import requests
 
-BASE = "https://api-testnet.bybit.com"
-RO_KEY = os.environ.get("BYBIT_API_KEY_READONLY", "")   # testnet read-only (key only, no secret shared)
+BASE = "https://api-testnet.bybit.com"  # executor's testnet venue host — kept for parity with the executor
+RO_KEY = os.environ.get("BYBIT_API_KEY_READONLY", "")   # testnet read-only key (config name shared with the executor)
 
 
 def show(label, url, params):

@@ -27,7 +27,8 @@ import numpy as np
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
-BYBIT = "https://api.bybit.com"
+EXCHANGE_API = "https://api.bitget.com"
+PRODUCT_TYPE = "usdt-futures"
 FEE = 0.00055   # taker per side per leg
 LEGS_ROUNDTRIP = 4  # open spot + open perp + close spot + close perp
 
@@ -36,25 +37,26 @@ def fetch_funding(symbol="BTCUSDT", months=12):
     now = int(time.time() * 1000)
     start = now - months * 30 * 86400 * 1000
     rows = {}
-    cursor = now
-    for _ in range(40):
+    for pg in range(1, 41):  # funding history paginated by incrementing pageNo (newest-first)
         try:
-            j = requests.get(BYBIT + "/v5/market/funding/history",
-                             params={"category": "linear", "symbol": symbol, "limit": 200, "endTime": cursor},
+            j = requests.get(EXCHANGE_API + "/api/v2/mix/market/history-fund-rate",
+                             params={"symbol": symbol, "productType": PRODUCT_TYPE,
+                                     "pageSize": 100, "pageNo": pg},
                              timeout=20).json()
         except Exception as e:  # noqa: BLE001
             print(f"  funding error: {str(e)[:60]}"); break
-        lst = j.get("result", {}).get("list", [])
+        if str(j.get("code")) not in ("0", "00000"):
+            print(f"  funding code {j.get('code')}: {str(j.get('msg'))[:50]}"); break
+        lst = j.get("data", []) or []
         if not lst:
             break
         for x in lst:
-            rows[int(x["fundingRateTimestamp"])] = float(x["fundingRate"])
-        oldest = min(int(x["fundingRateTimestamp"]) for x in lst)
-        if oldest <= start or oldest >= cursor:
+            rows[int(x["fundingTime"])] = float(x["fundingRate"])
+        oldest = min(int(x["fundingTime"]) for x in lst)
+        if oldest <= start:
             break
-        cursor = oldest - 1
         time.sleep(0.12)
-    items = sorted(rows.items())
+    items = sorted((t, r) for t, r in rows.items() if t >= start)
     return np.array([t for t, _ in items]), np.array([r for _, r in items])
 
 

@@ -1,7 +1,7 @@
-"""Re-test the trend-following edge on REAL Bybit data (now WITH volume) — does volume help?
+"""Re-test the trend-following edge on REAL exchange data (now WITH volume) — does volume help?
 
-Pyth had no volume -> we disabled the momentum volume gate -> trend-following failed OOS. Bybit
-gives real volume, so now we can test honestly: classifier features include real volume, AND the
+Pyth had no volume -> we disabled the momentum volume gate -> trend-following failed OOS. The exchange
+feed gives real volume, so now we can test honestly: classifier features include real volume, AND the
 momentum entry can require volume confirmation (volume_min_ratio). Walk-forward 60/40, grid-search
 on train, lock, test once OOS — same honest protocol as scripts/19. Compares vol-gate OFF vs ON.
 
@@ -58,7 +58,7 @@ def run(df, proba, labels, adx_th, vol_th, adx_min, bwin, tp, conf, vol_min):
 
 
 def validate(ticker, vol_min):
-    fp = ROOT / "data" / f"{ticker.lower()}_bybit_hourly.csv"
+    fp = ROOT / "data" / f"{ticker.lower()}_perp_hourly.csv"
     if not fp.exists():
         return None
     df = ma.add_features(pd.read_csv(fp)).dropna().reset_index(drop=True)
@@ -85,7 +85,7 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:  # noqa: BLE001
         pass
-    print("=== Trend-following on REAL Bybit data (with volume) — vol-gate OFF vs ON ===\n")
+    print("=== Trend-following on REAL exchange data (with volume) — vol-gate OFF vs ON ===\n")
     print(f"{'asset':6} {'vol_gate':>8} {'verdict':>13} {'OOS ROI':>9} {'win':>6} {'trades':>7} {'clf_acc':>8}")
     for t in ["MNT", "BTC", "ETH", "SOL"]:
         for vol_min in (0.0, 1.1):

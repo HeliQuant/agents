@@ -5,7 +5,7 @@ HL-vs-Binance basis dislocation mean-reverts as a MARKET-NEUTRAL pairs trade, un
 
 Honest: find a robust fee-clearing basis edge, or confirm perp-perp basis is arbitraged away (expected:
 cross-exchange basis on BTC is the most-arbed quantity in crypto → likely tiny). Hyperliquid is ALSO our
-permissionless EXECUTION venue (solves the Bybit geo-block) — valuable regardless of the test outcome.
+permissionless EXECUTION venue (solves the centralized-venue geo-block) — valuable regardless of outcome.
 
 Run: python scripts/72_btc_basis.py
 """

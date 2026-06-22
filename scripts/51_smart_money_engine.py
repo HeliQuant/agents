@@ -1,8 +1,9 @@
 """Dynamic Smart-Money Flow Engine — auto-selects mode per asset → unified score for the PM.
 
   📜 CONTRACT mode (Mantle assets): DEX flow_bias + liquidity + mETH staking conviction (on-chain).
-  📈 POSITIONING mode (majors BTC/ETH/SOL): Bybit OI 24h-change + funding + long-short (derivatives
-     positioning = where perp whales sit; contrarian-to-crowding, aligned with our OI-contrarian strategy).
+  📈 POSITIONING mode (majors BTC/ETH/SOL): exchange OI 24h-change + funding + an external positioning
+     feed (derivatives positioning = where perp whales sit; contrarian-to-crowding, aligned with our
+     OI-contrarian strategy).
 
 Honest: CONTEXT signal for the PM, forward-logged to validate (not a claimed alpha). All FREE data.
 Run: python scripts/51_smart_money_engine.py
@@ -19,7 +20,8 @@ import requests
 
 ROOT = Path(__file__).resolve().parents[1]
 DS = "https://api.dexscreener.com"
-BYBIT = "https://api.bybit.com"
+EXCHANGE_API = "https://api.bitget.com"
+PRODUCT_TYPE = "usdt-futures"
 ESCAN = "https://api.etherscan.io/v2/api"
 EKEY = os.environ.get("MANTLESCAN_API_KEY", "")
 METH_STAKING_L1 = "0xe3cBd06D7dadB3F4e6557bAb7EdD924CD1489E8f"
@@ -68,23 +70,28 @@ def contract_signal(sym):
 def positioning_signal(sym):
     s = PERP[sym]
     src = "live"
+    # The public exchange ticker serves CURRENT funding + open interest (holdingAmount). The retail
+    # long/short ratio and an OI history series have no keyless equivalent here, so those come from the
+    # cached scripts/37 positioning file (external positioning feed). We never fabricate them.
+    fp = ROOT / "data" / f"{sym.lower()}_positioning.csv"
+    df = pd.read_csv(fp) if fp.exists() else None
+    buy_ratio = float(df["buy_ratio"].iloc[-1]) if (df is not None and "buy_ratio" in df) else 0.5
+    oi_chg = (((float(df["oi"].iloc[-1]) / float(df["oi"].iloc[-25]) - 1) * 100)
+              if (df is not None and "oi" in df and len(df) > 25 and pd.notna(df["oi"].iloc[-25])) else 0.0)
+    funding = (float(df["funding"].iloc[-1]) * 100) if (df is not None and "funding" in df) else 0.0
     try:
-        oi = requests.get(f"{BYBIT}/v5/market/open-interest", params={"category": "linear", "symbol": s, "intervalTime": "1h", "limit": 24}, timeout=12).json()
-        oil = oi.get("result", {}).get("list", [])
-        oi_chg = ((float(oil[0]["openInterest"]) / float(oil[-1]["openInterest"]) - 1) * 100) if len(oil) > 1 else 0
-        fr = requests.get(f"{BYBIT}/v5/market/funding/history", params={"category": "linear", "symbol": s, "limit": 1}, timeout=12).json()
-        funding = float(fr["result"]["list"][0]["fundingRate"]) * 100
-        ar = requests.get(f"{BYBIT}/v5/market/account-ratio", params={"category": "linear", "symbol": s, "period": "1h", "limit": 1}, timeout=12).json()
-        buy_ratio = float(ar["result"]["list"][0]["buyRatio"])
-    except Exception:  # noqa: BLE001 — Bybit intermittently geo-blocked; fall back to cached scripts/37 data
-        fp = ROOT / "data" / f"{sym.lower()}_positioning.csv"
-        if not fp.exists():
-            return {"score": 50, "label": "n/a", "detail": "no live Bybit + no cache"}
-        df = pd.read_csv(fp)
-        buy_ratio = float(df["buy_ratio"].iloc[-1])
-        funding = float(df["funding"].iloc[-1]) * 100
-        oi_chg = ((float(df["oi"].iloc[-1]) / float(df["oi"].iloc[-25]) - 1) * 100) if len(df) > 25 else 0.0
+        j = requests.get(f"{EXCHANGE_API}/api/v2/mix/market/ticker",
+                         params={"symbol": s, "productType": PRODUCT_TYPE}, timeout=12).json()
+        data = j.get("data")
+        row = data[0] if isinstance(data, list) and data else (data or {})
+        if row.get("fundingRate") is not None:
+            funding = float(row["fundingRate"]) * 100  # refresh funding from the live exchange ticker
+    except Exception:  # noqa: BLE001 — exchange ticker unavailable; keep cached funding
+        if df is None:
+            return {"score": 50, "label": "n/a", "detail": "no live exchange + no cache"}
         src = "cached"
+    if df is None and src == "live":
+        src = "live (funding only; no positioning cache)"
     # contrarian-to-crowding: heavy long-crowd → contrarian bearish (low score); balanced → 50
     score = int(round(100 - buy_ratio * 100))  # buy_ratio 0.78→22 (crowded long=caution); 0.30→70 (crowded short=bullish)
     crowd = "long-crowded" if buy_ratio > 0.6 else ("short-crowded" if buy_ratio < 0.4 else "balanced")

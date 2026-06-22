@@ -35,7 +35,7 @@ CAP_H = {"cur4": 4, "h12": 12, "trail": 24}
 
 
 def load(asset: str) -> pd.DataFrame | None:
-    p = DATA / f"{asset.lower()}_bybit_hourly.csv"
+    p = DATA / f"{asset.lower()}_perp_hourly.csv"
     if not p.exists():
         return None
     df = ml.build_features(pd.read_csv(p, parse_dates=["datetime"])).reset_index(drop=True)

@@ -1,4 +1,4 @@
-"""Do Bybit positioning signals PREDICT forward returns? Honest, overfit-resistant test.
+"""Do exchange positioning signals PREDICT forward returns? Honest, overfit-resistant test.
 
 Method (no threshold tuning -> hard to fool ourselves):
   * IC = Spearman rank corr(signal[t], forward_return[t->t+h]) at h = 4/8/24h.

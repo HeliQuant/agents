@@ -1,9 +1,14 @@
-"""Collect FULL-history Bybit positioning signals (funding / open-interest / long-short ratio)
+"""Collect exchange positioning signals (funding / open-interest) from the public perp venue
 and align to our hourly close bars. Output: data/{ticker}_positioning.csv ready for IC backtest.
 
-Signals only exist for PERPS (linear). Our tradeable core MNT has a perp; we also pull BTC/ETH/SOL
+Signals only exist for PERPS. Our tradeable core MNT has a perp; we also pull BTC/ETH/SOL
 to cross-check whether any relationship is asset-specific or general. mETH perp may not exist (skip
 gracefully). Run: python scripts/37_collect_bybit_positioning.py
+
+Honesty note: the public perp venue exposes a full HISTORY of funding rates, but only a CURRENT
+snapshot of open interest (holdingAmount on the ticker). We therefore backfill funding over the
+window and attach the live OI reading to the most recent bar only — we do NOT fabricate a historical
+OI series. A retail long/short ratio feed is not available keyless here, so that column is omitted.
 """
 from __future__ import annotations
 
@@ -15,63 +20,73 @@ import pandas as pd
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = "https://api.bybit.com"
+BASE = "https://api.bitget.com"
+PRODUCT_TYPE = "usdt-futures"
 ASSETS = {"MNT": "MNTUSDT", "BTC": "BTCUSDT", "ETH": "ETHUSDT", "SOL": "SOLUSDT", "METH": "METHUSDT"}
 
 
-def paginate(path, params, ts_key, max_pages):
-    rows: dict[int, dict] = {}
-    cursor = None
-    for _ in range(max_pages):
-        p = dict(params)
-        if cursor is not None:
-            p["endTime"] = cursor
+def funding_history(sym, max_pages=25):
+    """Full funding-rate history (newest-first), paginated by incrementing pageNo -> {ts_ms: rate}."""
+    rows: dict[int, float] = {}
+    for pg in range(1, max_pages + 1):
         try:
-            j = requests.get(BASE + path, params=p, timeout=20).json()
+            j = requests.get(f"{BASE}/api/v2/mix/market/history-fund-rate",
+                             params={"symbol": sym, "productType": PRODUCT_TYPE,
+                                     "pageSize": 100, "pageNo": pg}, timeout=20).json()
         except Exception as e:  # noqa: BLE001
             print(f"      fail {str(e)[:40]}"); break
-        if j.get("retCode") != 0:
-            print(f"      retCode {j.get('retCode')} {str(j.get('retMsg'))[:40]}"); break
-        lst = j.get("result", {}).get("list", [])
+        if str(j.get("code")) not in ("0", "00000"):
+            print(f"      code {j.get('code')} {str(j.get('msg'))[:40]}"); break
+        lst = j.get("data", []) or []
         if not lst:
             break
         for x in lst:
-            rows[int(x[ts_key])] = x
-        oldest = min(int(x[ts_key]) for x in lst)
-        if cursor is not None and oldest >= cursor:
-            break
-        cursor = oldest - 1
+            rows[int(x["fundingTime"])] = float(x["fundingRate"])
         time.sleep(0.12)
     return rows
 
 
+def current_oi(sym):
+    """Current open interest (= holdingAmount) from the ticker, or None."""
+    try:
+        j = requests.get(f"{BASE}/api/v2/mix/market/ticker",
+                         params={"symbol": sym, "productType": PRODUCT_TYPE}, timeout=20).json()
+    except Exception:  # noqa: BLE001
+        return None
+    if str(j.get("code")) not in ("0", "00000"):
+        return None
+    data = j.get("data")
+    row = data[0] if isinstance(data, list) and data else (data or {})
+    try:
+        return float(row.get("holdingAmount"))
+    except (TypeError, ValueError):
+        return None
+
+
 def collect(ticker, sym):
-    hp = ROOT / "data" / f"{ticker.lower()}_bybit_hourly.csv"
+    hp = ROOT / "data" / f"{ticker.lower()}_perp_hourly.csv"
     if not hp.exists():
         print(f"   {ticker}: no hourly file, skip"); return
     h = pd.read_csv(hp)[["timestamp", "datetime", "close"]].sort_values("timestamp").reset_index(drop=True)
 
-    fund = paginate("/v5/market/funding/history", {"category": "linear", "symbol": sym, "limit": 200}, "fundingRateTimestamp", 25)
-    oi = paginate("/v5/market/open-interest", {"category": "linear", "symbol": sym, "intervalTime": "1h", "limit": 200}, "timestamp", 45)
-    lsr = paginate("/v5/market/account-ratio", {"category": "linear", "symbol": sym, "period": "1h", "limit": 500}, "timestamp", 45)
+    fund = funding_history(sym)
+    oi_now = current_oi(sym)
 
-    if not (fund or oi or lsr):
+    if not (fund or oi_now is not None):
         print(f"   {ticker} ({sym}): NO perp data (no perp listed?) — skip"); return
 
     merged = h.copy()
     if fund:
-        fdf = pd.DataFrame([{"timestamp": int(k), "funding": float(v["fundingRate"])} for k, v in fund.items()]).sort_values("timestamp")
+        fdf = pd.DataFrame([{"timestamp": int(k), "funding": float(v)} for k, v in fund.items()]).sort_values("timestamp")
         merged = pd.merge_asof(merged, fdf, on="timestamp", direction="backward")  # ffill last funding
-    if oi:
-        odf = pd.DataFrame([{"timestamp": int(k), "oi": float(v["openInterest"])} for k, v in oi.items()]).sort_values("timestamp")
-        merged = pd.merge_asof(merged, odf, on="timestamp", direction="backward", tolerance=2 * 3600 * 1000)
-    if lsr:
-        ldf = pd.DataFrame([{"timestamp": int(k), "buy_ratio": float(v["buyRatio"])} for k, v in lsr.items()]).sort_values("timestamp")
-        merged = pd.merge_asof(merged, ldf, on="timestamp", direction="backward", tolerance=2 * 3600 * 1000)
+    if oi_now is not None and not merged.empty:
+        # current snapshot only — attached to the latest bar (no fabricated history)
+        merged["oi"] = pd.NA
+        merged.loc[merged.index[-1], "oi"] = oi_now
 
     out = ROOT / "data" / f"{ticker.lower()}_positioning.csv"
     merged.to_csv(out, index=False)
-    cov = {c: f"{merged[c].notna().mean()*100:.0f}%" for c in ("funding", "oi", "buy_ratio") if c in merged}
+    cov = {c: f"{merged[c].notna().mean()*100:.0f}%" for c in ("funding", "oi") if c in merged}
     print(f"   {ticker} ({sym}): {len(merged)} bars | coverage {cov} -> {out.name}")
 
 
@@ -81,7 +96,7 @@ def main():
     except Exception:  # noqa: BLE001
         pass
     tickers = [t.upper() for t in sys.argv[1:]] or list(ASSETS)
-    print("Collecting Bybit positioning (funding/OI/long-short) -> aligned hourly:\n")
+    print("Collecting exchange positioning (funding/OI) -> aligned hourly:\n")
     for t in tickers:
         collect(t, ASSETS.get(t, f"{t}USDT"))
 

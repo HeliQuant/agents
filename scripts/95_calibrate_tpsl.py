@@ -26,7 +26,7 @@ def _load_trades() -> list:
 
 def main() -> None:
     trades = _load_trades()
-    print(f"fetched {len(trades)} closed trades · measuring real MFE/MAE per trade (Bybit 15m candles)...\n")
+    print(f"fetched {len(trades)} closed trades · measuring real MFE/MAE per trade (exchange 15m candles)...\n")
     calib = calibrate(trades)
     if not calib:
         print("no asset reached the >=5-trade minimum — nothing written")
