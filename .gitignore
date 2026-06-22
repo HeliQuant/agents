@@ -39,6 +39,7 @@ data/desk_outcomes.jsonl
 
 # regenerable data caches (re-fetched by collector scripts)
 data/*_perp_hourly.csv
+data/*_bybit_hourly.csv
 data/btc_5m_binance.csv
 data/btc_basis.csv
 data/btc_orderflow.csv
