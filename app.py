@@ -9,11 +9,11 @@ and exposes endpoints to watch it live:
   GET /health      "ok" (Railway healthcheck)
 
 CONFIG (Railway env vars):
-  ASSETS=MNT            comma-list to analyze each cycle (default MNT)
+  ASSETS=BTC            comma-list to analyze each cycle (default BTC)
   INTERVAL_MIN=12       minutes between LLM org cycles (multi-key rotation lifts the old >=15 limit; floor is 5)
-  EXECUTE=0             1 = place firm-sanctioned LIVE orders (Bybit); 0 = analyze-only (default, safe)
-  REFRESH_DATA=1        1 = re-fetch fresh market data each cycle (needs Bybit public reachable)
-  + all the firm's API keys (LLM/Groq, Nansen, Elfa, Mantlescan, Supabase, Bybit...) — copy from your .env.
+  EXECUTE=0             1 = place firm-sanctioned LIVE orders (Bitget); 0 = analyze-only (default, safe)
+  REFRESH_DATA=1        1 = re-fetch fresh market data each cycle (needs Bitget public reachable)
+  + all the firm's API keys (LLM/Groq, Nansen, Elfa, Mantlescan, Supabase, Bitget...) — copy from your .env.
   NEVER commit secrets; set them in Railway's Variables tab.
 """
 from __future__ import annotations
@@ -338,7 +338,7 @@ def campaign_status():
 @app.get("/trades")
 def trades(limit: int = 120):
     """THE TRADE LEDGER — every resolved campaign trade with its full data (entry/exit/PnL/exit-reason/
-    desk-votes). Honest: these are paper trades at live prices (real fills on Bybit testnet when armed);
+    desk-votes). Honest: these are paper trades at live prices (real fills on Bitget testnet when armed);
     the chain anchors the DECISIONS, not each paper fill."""
     _kick_campaign()  # FE traffic self-drives the floor — advances even if the keep-alive pinger lapses
     try:
@@ -601,12 +601,14 @@ def onchain(wallet: str = "", limit: int = 40):
                              "configured": bool(key)}, status_code=200)
 
 
-_CANDLE_CACHE: dict = {}   # (asset,interval) -> (epoch, payload). Bybit kline is reachable from Amsterdam.
+_CANDLE_CACHE: dict = {}   # (asset,interval) -> (epoch, payload). Bitget mainnet kline (keyless).
+_BG_GRAN = {"1": "1m", "5": "5m", "15": "15m", "30": "30m", "60": "1H", "120": "2H",
+            "240": "4H", "360": "6H", "720": "12H", "D": "1D", "1D": "1D", "W": "1W"}
 
 
 @app.get("/candles")
 def candles(asset: str = "BTC", interval: str = "60", limit: int = 120):
-    """Recent OHLC candles for an asset (Bybit linear perp, served from the Amsterdam region so any
+    """Recent OHLC candles for an asset (Bitget mainnet perp, keyless — served from the cloud so any
     viewer gets them regardless of their own geo). Cached ~45s. Feeds the live-floor candlestick that
     shows each open campaign position against its entry / SL / TP."""
     import requests
@@ -615,10 +617,11 @@ def candles(asset: str = "BTC", interval: str = "60", limit: int = 120):
     if hit and time.time() - hit[0] < 45:
         return JSONResponse(hit[1])
     try:
-        r = requests.get("https://api.bybit.com/v5/market/kline",
-                         params={"category": "linear", "symbol": f"{asset.upper()}USDT",
-                                 "interval": interval, "limit": str(min(max(limit, 10), 200))}, timeout=12).json()
-        rows = list(reversed(r["result"]["list"]))  # Bybit returns newest-first -> oldest-first
+        gran = _BG_GRAN.get(interval, "1H")
+        r = requests.get("https://api.bitget.com/api/v2/mix/market/candles",
+                         params={"symbol": f"{asset.upper()}USDT", "productType": "usdt-futures",
+                                 "granularity": gran, "limit": str(min(max(limit, 10), 200))}, timeout=12).json()
+        rows = r.get("data") or []  # Bitget returns oldest-first
         out = [{"t": int(x[0]), "o": float(x[1]), "h": float(x[2]), "l": float(x[3]), "c": float(x[4])} for x in rows]
         payload = {"asset": asset.upper(), "interval": interval, "candles": out}
         _CANDLE_CACHE[key] = (time.time(), payload)
@@ -629,23 +632,23 @@ def candles(asset: str = "BTC", interval: str = "60", limit: int = 120):
 
 @app.get("/carry")
 def carry():
-    """Current carry desk reads — delta-neutral funding carry per symbol, from the locally-pushed cache
-    (Bybit is geo-blocked from Railway; scripts/88 feeds this). Shows the desk IS alive in the cloud."""
+    """Current carry desk reads — delta-neutral funding carry per symbol, computed live from keyless
+    Bitget mainnet funding (cloud-reachable; falls back to the scripts/88 cache on a feed hiccup)."""
     try:
         from firm.carry_signal import carry_brief, live_carry
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"error": str(e)[:120]}, status_code=500)
     out = {}
     asofs = []
-    for s in ("HYPEUSDT", "SUIUSDT", "MNTUSDT", "BTCUSDT", "ETHUSDT"):
+    for s in ("HYPEUSDT", "SUIUSDT", "BTCUSDT", "ETHUSDT", "XRPUSDT"):
         c = live_carry(s)
         if c and c.get("asof"):
             asofs.append(c["asof"])
         out[s] = ({"carry_ann_pct": c.get("carry_ann_pct"), "crash_class": c.get("crash_class"),
                    "verdict": c.get("verdict"), "source": c.get("source", "live")} if c else None)
-    # asof = the STORED compute time (scripts/88 stamps it on the Bybit-reachable local engine; Bybit is
-    # geo-blocked from Railway so the cloud reads it from Supabase). Most-recent push, or null if none
-    # carry a timestamp yet — a null is honest; a fabricated freshness time is not.
+    # asof = real compute time (funding fetched live from Bitget this request), or the cache's stamp on
+    # fallback. Most-recent across symbols, or null if none carry a timestamp yet — a null is honest; a
+    # fabricated freshness time is not.
     return JSONResponse({"asof": max(asofs) if asofs else None, "carry": out,
                          "best_harvestable": carry_brief() or "none harvestable now (all thin/lumpy — honest skip)"})
 
@@ -673,12 +676,11 @@ def whales():
 
 @app.get("/probe")
 def probe():
-    """Test which exchange/data hosts are reachable FROM RAILWAY's IP (answers: can HeliQuant fetch Bybit here?)."""
+    """Test which exchange/data hosts are reachable FROM RAILWAY's IP (answers: can HeliQuant fetch Bitget here?)."""
     import requests
     targets = {
-        "bybit_mainnet": ("GET", "https://api.bybit.com/v5/market/time", None),
-        "bybit_testnet": ("GET", "https://api-testnet.bybit.com/v5/market/time", None),
-        "binance": ("GET", "https://fapi.binance.com/fapi/v1/time", None),
+        "bitget_mainnet": ("GET", "https://api.bitget.com/api/v2/public/time", None),
+        "bitget_mix": ("GET", "https://api.bitget.com/api/v2/mix/market/ticker?symbol=BTCUSDT&productType=usdt-futures", None),
         "hyperliquid": ("POST", "https://api.hyperliquid.xyz/info", {"type": "meta"}),
         "groq": ("GET", "https://api.groq.com/openai/v1/models", None),
     }
@@ -743,7 +745,7 @@ def bitget_probe(order: int = 0):
 @app.get("/bitget-data")
 def bitget_data(asset: str = "BTC", candles: int = 0):
     """Public Bitget MAINNET market data (keyless) — funding, open-interest, last, 24h vol; optional 1H
-    candles (?asset=BTC&candles=50). A supplementary venue read alongside Bybit."""
+    candles (?asset=BTC&candles=50). A keyless read of the firm's own execution venue."""
     try:
         from firm import bitget_adapter as bg
         out: dict = {"snapshot": bg.market_snapshot(asset)}
@@ -790,9 +792,9 @@ async def register(req: Request):
 
 @app.post("/ingest")
 async def ingest(req: Request):
-    """CONNECTOR: the local engine (which CAN reach Bybit via WARP) POSTs fresh positioning data here, so
-    the cloud brain self-learns on live data without Bybit access. Auth: Bearer INGEST_TOKEN (set in Railway).
-    Body: {"asset": "MNT", "csv": "<full positioning csv text>"}."""
+    """CONNECTOR: the local engine POSTs supplementary data here (carry, positioning) so the cloud brain
+    has it even when a particular feed is thin. Auth: Bearer INGEST_TOKEN (set in Railway).
+    Body: {"asset": "BTC", "csv": "<full positioning csv text>"} or a carry payload."""
     token = os.environ.get("INGEST_TOKEN")
     if not token:
         return JSONResponse({"error": "ingest disabled — set INGEST_TOKEN in Railway to enable"}, status_code=503)
@@ -805,8 +807,8 @@ async def ingest(req: Request):
     asset = str(body.get("asset", "")).upper()
     if not asset:
         return JSONResponse({"error": "need asset"}, status_code=400)
-    # CARRY payload: the local engine (Bybit-reachable) computed the carry and pushes the result so the
-    # cloud carry desk works without a live exchange call (Bybit is geo-blocked from Railway).
+    # CARRY payload: a fallback path — the cloud now computes carry live from Bitget directly, but the
+    # local engine can still push a precomputed result here in case the live fetch is thin.
     carry = body.get("carry")
     if isinstance(carry, dict):
         try:
