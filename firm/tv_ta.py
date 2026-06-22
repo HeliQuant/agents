@@ -13,11 +13,11 @@ Fails SOFT (returns None) everywhere so a feed hiccup can never break the floor.
 import time
 import requests
 
-# our 6 assets -> the exchange:symbol TradingView resolves (probed live 2026-06-14: all 6 covered,
-# incl the usually-missing alts MNT/HYPE on Bybit and SUI on Binance).
+# our 6 assets -> the Bitget perp symbol TradingView resolves (full-Bitget: every leg priced on the
+# same venue the firm executes on; .P = the USDT-M perpetual contract).
 _TICKERS = {
-    "BTC": "BINANCE:BTCUSDT", "ETH": "BINANCE:ETHUSDT", "SOL": "BINANCE:SOLUSDT",
-    "MNT": "BYBIT:MNTUSDT", "HYPE": "BYBIT:HYPEUSDT", "SUI": "BINANCE:SUIUSDT",
+    "BTC": "BITGET:BTCUSDT.P", "ETH": "BITGET:ETHUSDT.P", "SOL": "BITGET:SOLUSDT.P",
+    "XRP": "BITGET:XRPUSDT.P", "HYPE": "BITGET:HYPEUSDT.P", "SUI": "BITGET:SUIUSDT.P",
 }
 _TF = ["60", "240", "1D"]   # 1h, 4h, 1D (the bare '1D' field has no suffix on the endpoint)
 _TTL = 300                  # 5-min cache — consensus moves slowly; don't hammer an unofficial endpoint

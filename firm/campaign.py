@@ -6,7 +6,7 @@ The honest synthesis, running ON Railway:
   * REAL capital still requires a validated edge — the PM gate is untouched (registry empty -> no
     real-money ENTER). That discipline IS the product.
   * These positions are PAPER (zero capital at risk) at REAL live prices: entries/exits mark against
-    DeFiLlama's price API (CoinGecko fallback) — both reachable from the cloud (Bybit is geo-blocked).
+    Bitget mainnet tickers (keyless), with DeFiLlama then CoinGecko as fallbacks — all cloud-reachable.
   * Every open is justified by the QUANTITATIVE desks (no LLM burn): flow-intel's learned/FDR-gated
     signals, z-score extremes on OI/funding/flow/momentum from the fed positioning data, and the live
     Hyperliquid whale read. The vote breakdown is stored ON the position — auditable bravery.
@@ -32,13 +32,14 @@ import pandas as pd
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
-BYBIT = "https://api.bybit.com"
+BITGET_PUB = "https://api.bitget.com"   # keyless mainnet market data (ticker/candles) — full-Bitget feed
 
-# FOCUSED on the Mantle thesis: MNT (flagship) + BTC/ETH/SOL (liquid macro) + HYPE/SUI (high-vol, whale-rich
-# on Hyperliquid). Deliberately NOT a sprawling alt universe — a Mantle firm trading DOGE/ADA dilutes the
-# story and adds no edge (directional is no-edge regardless). Thesis-focus + quality over a livelier book;
-# the anti-martingale heat (below) still leans the book in/out with the realized record.
-BASKET = ["MNT", "BTC", "ETH", "SOL", "HYPE", "SUI"]
+# FOCUSED book, all on Bitget: BTC/ETH/SOL (liquid macro) + HYPE/SUI (high-vol) + XRP (deep, liquid).
+# BTC/ETH/XRP execute as REAL Bitget DEMO fills (the only three on the SUSDT-FUTURES demo); SOL/HYPE/SUI
+# paper-trade at live Bitget mainnet marks. Deliberately NOT a sprawling alt universe — directional is
+# no-edge regardless, so quality over a livelier book; the anti-martingale heat (below) leans the book
+# in/out with the realized record.
+BASKET = ["BTC", "ETH", "SOL", "HYPE", "SUI", "XRP"]
 TARGET = 1000              # the floor is a CONTINUOUS exploration engine — the first 100 was the proof;
                            #   keep it running (and learning) instead of freezing 'done' at 100
 SLOTS_PER_ASSET = 4
@@ -128,8 +129,8 @@ VIRTUAL_FULL = 100.0
 VIRTUAL_LEAN = 50.0
 PAPER_BANKROLL = float(os.environ.get("PAPER_BANKROLL", "10000"))  # paper starting capital for /campaign equity + ROI
 
-_GECKO_IDS = {"MNT": "mantle", "BTC": "bitcoin", "ETH": "ethereum",
-              "SOL": "solana", "HYPE": "hyperliquid", "SUI": "sui"}
+_GECKO_IDS = {"BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
+              "HYPE": "hyperliquid", "SUI": "sui", "XRP": "ripple"}
 
 _DEF = {"opened": 0, "closed": 0, "wins": 0, "net_usd": 0.0,
         "failed_conditions": {}, "cooldown_until": {}, "rounds": {}, "done": False}
@@ -156,16 +157,19 @@ def _save(s: dict, pos: list, log=None) -> None:
 
 
 def live_prices() -> dict:
-    """Live marks for the basket. Bybit perp tickers FIRST (the venue's own price — reachable from
-    Railway's Amsterdam region), DeFiLlama batch fallback, CoinGecko last."""
-    out: dict = {}
-    for a in _GECKO_IDS:
-        try:
-            r = requests.get(f"{BYBIT}/v5/market/tickers",
-                             params={"category": "linear", "symbol": f"{a}USDT"}, timeout=10).json()
-            out[a] = float(r["result"]["list"][0]["lastPrice"])
-        except Exception:  # noqa: BLE001
-            out[a] = None
+    """Live marks for the basket. Bitget mainnet perp tickers FIRST (one keyless batch call — the venue's
+    own price), DeFiLlama batch fallback, CoinGecko last."""
+    out: dict = {a: None for a in _GECKO_IDS}
+    try:
+        r = requests.get(f"{BITGET_PUB}/api/v2/mix/market/tickers",
+                         params={"productType": "usdt-futures"}, timeout=12).json()
+        by_sym = {row.get("symbol"): row for row in (r.get("data") or [])}
+        for a in _GECKO_IDS:
+            row = by_sym.get(f"{a}USDT")
+            if row and row.get("lastPr"):
+                out[a] = float(row["lastPr"])
+    except Exception:  # noqa: BLE001
+        pass
     if all(v for v in out.values()):
         return out
     ids = ",".join(f"coingecko:{g}" for g in _GECKO_IDS.values())
@@ -190,74 +194,23 @@ def live_prices() -> dict:
 
 
 def _refresh_if_stale(asset: str, max_age_h: float = 2.0, log=print) -> None:
-    """Self-collect fresh positioning data when stale — Bybit is reachable from Amsterdam, so the
-    campaign feeds ITSELF (no local feeder dependency)."""
-    if _data_age_h(asset) <= max_age_h:
-        return
-    try:
-        from importlib import import_module
-        import sys
-        if str(ROOT) not in sys.path:
-            sys.path.insert(0, str(ROOT))
-        import_module("scripts.73_collect_alt").collect(asset.upper())
-        log(f"  [campaign] self-refreshed {asset} positioning data")
-    except Exception as e:  # noqa: BLE001
-        log(f"  [campaign] {asset} self-refresh failed ({str(e)[:60]})")
+    """No-op (full-Bitget feed). The floor now reads live Bitget mainnet marks + klines directly every
+    step (live_prices / _bg_klines), so it no longer self-collects the legacy positioning CSV (which
+    fed the dormant OI-contrarian desk via a competitor venue). Kept as a stub so existing call-sites
+    stay valid; the OI desk simply reads flat when no positioning CSV exists for an asset."""
+    return
 
 
 # ── TESTNET execution rail (the "live trade" layer) ──────────────────────────────────────────────
-# HARD CONSTITUTION GATE: the campaign may only ever touch TESTNET money. Real capital requires a
-# validated edge through the PM — that gate lives elsewhere and is untouched. Enable with
-# CAMPAIGN_EXECUTE=1 + Bybit TESTNET keys in env. LONG-only (spot can't short); paper ledger stays
-# the source of truth for PnL — testnet fills are the proof of execution, not the accounting.
-
-def _exec_mod():
-    if os.environ.get("CAMPAIGN_EXECUTE", "0").strip() not in {"1", "true", "yes"}:
-        return None
-    try:
-        from firm import bybit_executor as ex
-        if not ex.is_testnet():
-            return None  # NEVER real money from the campaign — testnet or nothing
-        return ex
-    except Exception:  # noqa: BLE001
-        return None
-
-
-def _spot_step(symbol: str) -> float | None:
-    try:
-        r = requests.get("https://api-testnet.bybit.com/v5/market/instruments-info",
-                         params={"category": "spot", "symbol": symbol}, timeout=10).json()
-        return float(r["result"]["list"][0]["lotSizeFilter"]["basePrecision"])
-    except Exception:  # noqa: BLE001
-        return None
-
-
-def _exec_perp_open(p: dict, ex, log=print) -> None:
-    """SHORT (or LONG) open -> real LINEAR PERP market order on Bybit TESTNET. Spot can't short; the perp
-    rail can (Sell-to-open). qty (contracts) = size_usd / entry, floored to the lot step (>= min qty)."""
-    sym = f"{p['asset']}USDT"
-    try:
-        ex.set_dry_run(False)  # real send — _exec_mod already enforced is_testnet (campaign never touches real money)
-        side = "Buy" if p["dir"] == "LONG" else "Sell"
-        inst = ex.get_instrument(sym)
-        qty = ex._round_qty(p["size_usd"] / p["entry"], inst.get("qty_step"))
-        if qty < (inst.get("min_order_qty") or 0):
-            qty = inst.get("min_order_qty") or 0
-        if not qty or qty <= 0:
-            log(f"  [exec] #{p['id']} {sym} perp qty=0 — paper only")
-            return
-        r = ex.place_market_order(sym, side, qty)
-        if r.get("sent"):
-            p["exec_qty"] = qty
-            p["venue"] = "bybit-testnet-perp"
-            log(f"  ⚡ EXECUTED #{p['id']} {side} {qty} {sym} PERP on Bybit TESTNET (real fill, fake money)")
-    except Exception as e:  # noqa: BLE001
-        log(f"  [exec] #{p['id']} {sym} perp {p['dir']} skipped ({str(e)[:70]}) — paper only")
-
+# HARD CONSTITUTION GATE: the campaign may only ever touch Bitget DEMO (testnet) money. Real capital
+# requires a validated edge through the PM — that gate lives elsewhere and is untouched. Enable with
+# BITGET_EXECUTE=1 + Bitget DEMO keys in env. BTC/ETH/XRP fill on the SUSDT-FUTURES demo (LONG and
+# SHORT); every other asset (SOL/HYPE/SUI) paper-trades at live Bitget mainnet marks. The paper ledger
+# stays the source of truth for PnL — the demo fills are the proof of execution, not the accounting.
 
 def _bitget_open(p: dict, log=print) -> bool:
     """LONG/SHORT on Bitget DEMO futures (BTC/ETH/XRP) when BITGET_EXECUTE=1. Returns True if it owns
-    this execution (caller skips the Bybit path); False to fall through (asset not on Bitget demo)."""
+    this execution (sets venue); False to fall through to paper (asset not on Bitget demo / flag off)."""
     if os.environ.get("BITGET_EXECUTE", "0").strip().lower() not in {"1", "true", "yes"}:
         return False
     try:
@@ -266,7 +219,7 @@ def _bitget_open(p: dict, log=print) -> bool:
         return False
     a = p["asset"]
     if not bg.supported(a):
-        return False  # MNT/SOL/HYPE/SUI aren't on Bitget demo -> fall through to Bybit/paper
+        return False  # SOL/HYPE/SUI aren't on Bitget demo -> fall through to paper (learning)
     try:
         bg.set_position_mode(True)
         side = "buy" if p["dir"] == "LONG" else "sell"
@@ -287,107 +240,13 @@ def _bitget_open(p: dict, log=print) -> bool:
     return True
 
 
-def _bitget_fill(p: dict, log=print) -> dict | None:
-    """Place a Bitget DEMO market order (LONG or SHORT) for p; return a {venue,qty,...} fill or None."""
-    if os.environ.get("BITGET_EXECUTE", "0").strip().lower() not in {"1", "true", "yes"}:
-        return None
-    try:
-        from firm import bitget_adapter as bg
-    except Exception:  # noqa: BLE001
-        return None
-    a = p["asset"]
-    if not bg.supported(a):  # demo = BTC/ETH/XRP only
-        return None
-    try:
-        bg.set_position_mode(True)
-        side = "buy" if p["dir"] == "LONG" else "sell"
-        qty = bg.round_size(a, p["size_usd"], p["entry"])
-        if qty <= 0:
-            return None
-        r = bg.place_market_order(a, side, qty)
-        oid = r.get("orderId") if isinstance(r, dict) else r
-        log(f"  ⚡ EXECUTED #{p['id']} {p['dir']} {qty} {a} on Bitget DEMO ({side}, real fill) order={oid}")
-        return {"venue": "bitget-demo", "qty": qty, "symbol": bg.to_symbol(a)}
-    except Exception as e:  # noqa: BLE001
-        log(f"  [exec] #{p['id']} {a} bitget {p['dir']} skipped ({str(e)[:70]})")
-        return None
-
-
-def _bybit_long_fill(p: dict, log=print) -> dict | None:
-    """Bybit TESTNET spot BUY (LONG only — spot can't short) for p; return a fill or None."""
-    ex = _exec_mod()
-    if not ex:
-        return None
-    sym = f"{p['asset']}USDT"
-    try:
-        s = ex._trade_session()
-        base = p["asset"]
-        bal0 = _wallet_coin(ex, base)
-        ex._ok(s.place_order(category="spot", symbol=sym, side="Buy", orderType="Market",
-                             qty=str(p["size_usd"]), marketUnit="quoteCoin"))
-        time.sleep(0.8)
-        qty = max(0.0, _wallet_coin(ex, base) - bal0)
-        if qty > 0:
-            log(f"  ⚡ EXECUTED #{p['id']} BUY {qty} {base} on Bybit TESTNET (real fill, fake money)")
-            return {"venue": "bybit-testnet-spot", "qty": qty}
-        log(f"  [exec] #{p['id']} {sym} buy filled 0 (illiquid testnet spot)")
-        return None
-    except Exception as e:  # noqa: BLE001
-        log(f"  [exec] #{p['id']} {sym} bybit buy skipped ({str(e)[:60]})")
-        return None
-
-
-def _exec_open_dual(p: dict, log=print) -> None:
-    """LONG -> Bitget demo + Bybit testnet (both); SHORT -> Bitget only; nothing fills -> paper (learning)."""
-    fills: list = []
-    bg = _bitget_fill(p, log)            # Bitget does both LONG and SHORT
-    if bg:
-        fills.append(bg)
-    if p["dir"] == "LONG":               # Bybit testnet spot is LONG-only (can't short)
-        bb = _bybit_long_fill(p, log)
-        if bb:
-            fills.append(bb)
-    if fills:
-        p["fills"] = fills
-        p["venue"] = "+".join(f["venue"] for f in fills)   # e.g. "bitget-demo+bybit-testnet-spot"
-        p["exec_qty"] = fills[0]["qty"]                     # primary qty (back-compat with single-venue views)
-    else:
-        p["venue"] = "paper (learning)"
-        log(f"  [exec] #{p['id']} {p['asset']} {p['dir']} -> paper (learning) — no venue fill")
-
-
 def _exec_open(p: dict, log=print) -> None:
-    """Dual-venue (HQ_DUAL_VENUE=1): LONG -> Bybit testnet + Bitget demo; SHORT -> Bitget; else paper (learning).
-    Legacy (flag off): Bitget DEMO when BITGET_EXECUTE=1, else Bybit TESTNET (LONG spot / SHORT perp)."""
-    if os.environ.get("HQ_DUAL_VENUE", "0").strip().lower() in {"1", "true", "yes"}:
-        _exec_open_dual(p, log)
+    """Open execution (full-Bitget): BTC/ETH/XRP -> a REAL Bitget DEMO fill (LONG or SHORT) when
+    BITGET_EXECUTE=1; every other asset (and any flag-off / qty-0 / error case) -> paper (learning).
+    The paper ledger is the source of truth; the demo fill is only the proof of execution."""
+    if _bitget_open(p, log):   # owns BTC/ETH/XRP when armed (sets p['venue']); False -> fall through to paper
         return
-    if _bitget_open(p, log):
-        return
-    ex = _exec_mod()
-    if not ex:
-        return
-    if p["dir"] == "SHORT":
-        _exec_perp_open(p, ex, log)
-        return
-    sym = f"{p['asset']}USDT"
-    try:
-        s = ex._trade_session()
-        base_coin = p["asset"]
-        bal0 = _wallet_coin(ex, base_coin)
-        ex._ok(s.place_order(category="spot", symbol=sym, side="Buy", orderType="Market",
-                             qty=str(p["size_usd"]), marketUnit="quoteCoin"))
-        time.sleep(0.8)
-        qty = max(0.0, _wallet_coin(ex, base_coin) - bal0)
-        if qty > 0:
-            p["exec_qty"] = qty
-            p["venue"] = "bybit-testnet-spot"
-            log(f"  ⚡ EXECUTED #{p['id']} BUY {qty} {base_coin} on Bybit TESTNET (real fill, fake money)")
-        else:
-            p["venue"] = "paper"  # order placed but filled 0 — this asset's testnet spot is illiquid (e.g. HYPE/SUI)
-            log(f"  [exec] #{p['id']} {sym} buy filled 0 (illiquid testnet spot) — paper only")
-    except Exception as e:  # noqa: BLE001
-        log(f"  [exec] #{p['id']} {sym} buy skipped ({str(e)[:60]}) — paper only")
+    p["venue"] = "paper (learning)"
 
 
 def _close_one(p: dict, venue: str | None, qty: float | None, log=print) -> None:
@@ -402,32 +261,6 @@ def _close_one(p: dict, venue: str | None, qty: float | None, log=print) -> None
             log(f"  ⚡ EXECUTED #{p['id']} {opp} {qty} {p['asset']} Bitget DEMO close (reduce-only)")
         except Exception as e:  # noqa: BLE001
             log(f"  [exec] #{p['id']} bitget close failed ({str(e)[:60]})")
-        return
-    ex = _exec_mod()
-    if not ex:
-        return
-    sym = f"{p['asset']}USDT"
-    if venue == "bybit-testnet-perp":   # close the PERP with an opposite reduce-only order
-        try:
-            ex.set_dry_run(False)
-            opp = "Buy" if p["dir"] == "SHORT" else "Sell"
-            ex.place_market_order(sym, opp, qty, reduce_only=True)
-            log(f"  ⚡ EXECUTED #{p['id']} {opp} {qty} {sym} PERP close on Bybit TESTNET (reduce-only)")
-        except Exception as e:  # noqa: BLE001
-            log(f"  [exec] #{p['id']} {sym} perp close failed ({str(e)[:60]})")
-        return
-    if venue == "bybit-testnet-spot":   # spot close (LONG): SELL the coin we bought
-        try:
-            s = ex._trade_session()
-            step_sz = _spot_step(sym) or 0.0001
-            q = int(qty / step_sz) * step_sz
-            if q <= 0:
-                return
-            ex._ok(s.place_order(category="spot", symbol=sym, side="Sell", orderType="Market",
-                                 qty=str(round(q, 8))))
-            log(f"  ⚡ EXECUTED #{p['id']} SELL {q} {p['asset']} on Bybit TESTNET (position closed on venue)")
-        except Exception as e:  # noqa: BLE001
-            log(f"  [exec] #{p['id']} {sym} sell failed ({str(e)[:60]}) — paper close stands")
 
 
 def _exec_close(p: dict, log=print) -> None:
@@ -440,18 +273,6 @@ def _exec_close(p: dict, log=print) -> None:
     for f in fills:
         _close_one(p, f.get("venue"), f.get("qty"), log)
     p["exec_closed"] = True
-
-
-def _wallet_coin(ex, coin: str) -> float:
-    try:
-        res = ex._ok(ex._read_session().get_wallet_balance(accountType="UNIFIED"))
-        for a in res.get("list", []):
-            for c in a.get("coin", []):
-                if c.get("coin") == coin:
-                    return float(c.get("walletBalance") or 0)
-    except Exception:  # noqa: BLE001
-        pass
-    return 0.0
 
 
 def _data_age_h(asset: str) -> float:
@@ -550,15 +371,25 @@ def _cond_key(asset: str, reasons: list[str]) -> str:
                                           for r in reasons))
 
 
+def _bg_klines(asset: str, limit: int, granularity: str = "1H") -> list:
+    """Keyless Bitget mainnet OHLCV, OLDEST-first. Raw candle rows: [ts, open, HIGH, LOW, CLOSE, vol, ...]
+    — the same index layout the callers parse (x[2]=high, x[3]=low, x[4]=close). [] on failure."""
+    try:
+        r = requests.get(f"{BITGET_PUB}/api/v2/mix/market/candles",
+                         params={"symbol": f"{asset}USDT", "productType": "usdt-futures",
+                                 "granularity": granularity, "limit": str(limit)}, timeout=12).json()
+        rows = r.get("data") or []
+        return rows if isinstance(rows, list) else []
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _atr_pct(asset: str) -> float:
     """ATR(14) on 1h candles as a fraction of price — the asset's REAL volatility, which sets the SL/TP
-    distance (so a calm asset gets tight stops, a wild one gets room). Bybit kline (reachable from the
-    cloud); falls back to close-to-close realized vol from the fed data, then a flat 0.6%."""
+    distance (so a calm asset gets tight stops, a wild one gets room). Bitget mainnet kline (keyless);
+    falls back to close-to-close realized vol from the fed data, then a flat 0.6%."""
     try:
-        r = requests.get(f"{BYBIT}/v5/market/kline",
-                         params={"category": "linear", "symbol": f"{asset}USDT", "interval": "60", "limit": "50"},
-                         timeout=12).json()
-        rows = list(reversed(r["result"]["list"]))  # Bybit returns newest-first
+        rows = _bg_klines(asset, 50)  # oldest-first
         highs = [float(x[2]) for x in rows]
         lows = [float(x[3]) for x in rows]
         closes = [float(x[4]) for x in rows]
@@ -623,27 +454,31 @@ def _dynamic_horizon(reasons: list, edge: bool) -> int:
     return HORIZON_TREND_H if is_trend else HORIZON_FADE_H
 
 
+MIN_TREND_GAP = 0.004       # WINRATE FIX: require price to sit >=0.4% off the 24h SMA before calling a
+                            #   trend. A marginal SMA cross IS chop — opening on it is the whipsaw that
+                            #   tanked the win-rate (STALL/SL both ways). Below this gap -> 'flat' -> abstain.
+
+
 def _trend(asset: str) -> str:
-    """Light 1h-kline regime read -> 'up' / 'down' / 'flat' (price vs SMA24 + short slope). A cheap,
-    RESPONSIVE proxy for the 82.6% regime classifier, used to keep the campaign from FIGHTING a clear
-    trend: don't short a strong uptrend, don't long a strong downtrend.
+    """Light 1h-kline regime read -> 'up' / 'down' / 'flat' (price vs SMA24 + short slope + a STRENGTH
+    floor). A cheap, RESPONSIVE proxy for the 82.6% regime classifier, used to keep the campaign from
+    FIGHTING a clear trend AND from trading a marginal (choppy) one.
 
     Sensor window TUNED by backtest (contrarian entry + veto, OOS pooled): a 24h window catches a
     regime flip ~a day sooner than 48h and roughly HALVES the bleed (-86.8% -> -57.6%), while 12h /
     EMA9-21-cross over-react and whipsaw straight back to -87% / -98%. 24h is the responsive sweet
-    spot. (Live evidence that drove this: every counter-trend short bled while trend-aligned longs won.)"""
+    spot. The MIN_TREND_GAP floor then rejects marginal crosses (chop) as 'flat'."""
     try:
-        r = requests.get(f"{BYBIT}/v5/market/kline",
-                         params={"category": "linear", "symbol": f"{asset}USDT", "interval": "60", "limit": "60"},
-                         timeout=12).json()
-        closes = [float(x[4]) for x in reversed(r["result"]["list"])]
+        rows = _bg_klines(asset, 60)  # oldest-first
+        closes = [float(x[4]) for x in rows]
         if len(closes) < 30:
             return "flat"
         sma = sum(closes[-24:]) / 24          # 24h: responsive sweet spot (backtested)
         slope = closes[-1] - closes[-6]
-        if closes[-1] > sma and slope > 0:
+        gap = (closes[-1] - sma) / sma if sma else 0.0   # signed separation from the mean
+        if closes[-1] > sma and slope > 0 and gap >= MIN_TREND_GAP:
             return "up"
-        if closes[-1] < sma and slope < 0:
+        if closes[-1] < sma and slope < 0 and -gap >= MIN_TREND_GAP:
             return "down"
         return "flat"
     except Exception:  # noqa: BLE001
@@ -655,10 +490,8 @@ def _extension(asset: str, px: float, atr_pct: float) -> dict:
     move is DECELERATING. Lets the floor refuse a fresh entry into an already-run move (don't chase the
     stretched tail; prefer a pullback toward the mean). One 1h-kline read; fails soft to neutral."""
     try:
-        r = requests.get(f"{BYBIT}/v5/market/kline",
-                         params={"category": "linear", "symbol": f"{asset}USDT", "interval": "60", "limit": "30"},
-                         timeout=12).json()
-        closes = [float(x[4]) for x in reversed(r["result"]["list"])]
+        rows = _bg_klines(asset, 30)  # oldest-first
+        closes = [float(x[4]) for x in rows]
         if len(closes) < 20 or atr_pct <= 0 or px <= 0:
             return {"stretch": 0.0, "decel": False}
         sma = sum(closes[-20:]) / 20
@@ -714,10 +547,7 @@ def _range_pos(asset: str) -> float | None:
     high. ElfaAI/structure read: the worst major trades come from entering MID-range (chop) — only act
     near an EDGE. Returns None on failure (→ don't block)."""
     try:
-        r = requests.get(f"{BYBIT}/v5/market/kline",
-                         params={"category": "linear", "symbol": f"{asset}USDT", "interval": "60", "limit": str(RANGE_BARS + 4)},
-                         timeout=12).json()
-        rows = list(reversed(r["result"]["list"]))[-RANGE_BARS:]
+        rows = _bg_klines(asset, RANGE_BARS + 4)[-RANGE_BARS:]  # oldest-first, last RANGE_BARS
         highs = [float(x[2]) for x in rows]
         lows = [float(x[3]) for x in rows]
         hi, lo, close = max(highs), min(lows), float(rows[-1][4])
@@ -910,7 +740,7 @@ def step(log=print, open_new=True) -> dict:
         if rp is not None and RANGE_DEADZONE[0] < rp < RANGE_DEADZONE[1]:
             scan[a] = f"mid-range chop (pos {rp:.2f}) — no edge, abstain"
             continue
-        _refresh_if_stale(a, log=log)  # Amsterdam: Bybit reachable -> the campaign feeds itself
+        _refresh_if_stale(a, log=log)  # no-op now (full-Bitget): the floor reads live marks/klines directly
         net, reasons = desk_votes(a)
         if net == 0 or not reasons:
             # desks flat (no positioning extreme fired). If the REGIME is clear, ride it as trend-follow
@@ -991,6 +821,18 @@ def step(log=print, open_new=True) -> dict:
                                                 "entry": px, "t": _now(), "h": SHADOW_HORIZON_H})
             del s["shadows"][:-300]
             scan[a] = "TV: 1h vs 1D strongly opposed (counter-daily) — abstain"
+            continue
+        # ── EXPLORATION TF-CONFIRM (winrate fix): a no-edge trend-follow PROBE must be multi-timeframe
+        #    CONFIRMED, not merely "not strongly opposed". If the daily consensus is even MILDLY against
+        #    the 1h side (tv 'fade'), skip it — these marginal counter-daily probes are exactly the
+        #    STALL/SL whipsaw that tanked the win-rate. Desk-signal entries (a real positioning vote) and
+        #    validated-edge assets keep the looser gate; only the trend-follow probes face the higher bar.
+        #    TV-unavailable (None) does NOT block — the strengthened _trend floor still gates entry. (+shadow.)
+        if any("trend-follow" in str(r) for r in reasons) and tv_verdict == "fade" and not _has_edge(a):
+            s.setdefault("shadows", []).append({"asset": a, "dir": direction, "gate": "tv-unconfirmed-exploration",
+                                                "entry": px, "t": _now(), "h": SHADOW_HORIZON_H})
+            del s["shadows"][:-300]
+            scan[a] = "exploration not multi-TF confirmed (daily mildly opposes) — abstain"
             continue
         # ── SMART-MONEY VETO: don't take a trend-entry that HIGH-CONVICTION HL whales are positioned
         #    AGAINST. "Don't fight the trend" must NOT mean "buy the top the smart money (high ROE) is
@@ -1109,7 +951,7 @@ def step(log=print, open_new=True) -> dict:
         log(f"  🟢 CAMPAIGN OPEN #{p['id']} {direction} {a} @ {px} {tier} ${size:g} [{ex_txt}] (net {net:+}) "
             f"SL {sl} (−{sl_d*100:.1f}%) · TP {tp} (+{tp_d*100:.1f}%) · ATR {atr*100:.2f}% · learned:{learned} · "
             f"PM✓ {pm['reason'][:48]} — {'; '.join(reasons[:2])}")
-        _exec_open(p, log)  # LONGs become REAL Bybit TESTNET spot fills when CAMPAIGN_EXECUTE=1
+        _exec_open(p, log)  # BTC/ETH/XRP become REAL Bitget DEMO fills when BITGET_EXECUTE=1
         scan[a] = f"OPENED {direction} {tier}" + (f" · {learned}" if learned != "n/a" else "")
 
     s["last_scan"] = scan  # why each asset did/didn't open this step (surfaced on /campaign)
@@ -1171,7 +1013,7 @@ def _asset_perf(asset: str, pos: list, limit: int | None = None) -> dict:
 
 def trade_log(limit: int = 120) -> dict:
     """The TRADE LEDGER — every RESOLVED campaign trade with its full data (newest first). These are
-    paper trades at live prices (real fills happen on Bybit testnet when CAMPAIGN_EXECUTE=1); the
+    paper trades at live prices (real fills happen on Bitget DEMO when BITGET_EXECUTE=1); the
     on-chain layer anchors the DECISIONS, not each paper fill — so this is labelled honestly off-chain."""
     s, pos = _load()
     closed = [p for p in pos if p.get("exit") is not None]
@@ -1257,15 +1099,15 @@ def test_open(asset: str, side: str = "long", log=print) -> dict:
          "cond": _cond_key(a, reasons), "reasons": reasons, "regime": trend, "votes": 0,
          "t_open": _now(), "utc_open": datetime.now(timezone.utc).isoformat(), "exit": None}
     pos.append(p)
-    _exec_open(p, log)   # ALSO attempt the REAL Bybit-testnet fill (LONG spot) — tests the venue/region path
+    _exec_open(p, log)   # ALSO attempt the REAL Bitget DEMO fill (BTC/ETH/XRP) — tests the venue path
     _save(s, pos, log)
     log(f"  🧪 CAMPAIGN TEST-OPEN #{p['id']} {direction} {a} @ {px} · TP {p['tp']} / SL {p['sl']} · {cap_h}h · trailing-on")
     return {"opened": {k: p.get(k) for k in ("id", "asset", "dir", "tier", "entry", "sl", "tp",
                                              "tp_pct", "sl_pct", "cap_h", "regime", "reasons")},
             "executed_on_testnet": bool(p.get("venue")),
             "venue": p.get("venue"), "exec_qty": p.get("exec_qty"),
-            "note": ("executed_on_testnet=true => REAL Bybit testnet fill (this region/IP can trade). "
-                     "false => paper only (geo-blocked, or CAMPAIGN_EXECUTE off) — check /logs for the reason.")}
+            "note": ("executed_on_testnet=true => REAL Bitget DEMO fill (BTC/ETH/XRP). "
+                     "false => paper only (asset not on demo, or BITGET_EXECUTE off) — check /logs for the reason.")}
 
 
 def status() -> dict:
