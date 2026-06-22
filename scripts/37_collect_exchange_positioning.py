@@ -3,7 +3,7 @@ and align to our hourly close bars. Output: data/{ticker}_positioning.csv ready 
 
 Signals only exist for PERPS. Our tradeable core MNT has a perp; we also pull BTC/ETH/SOL
 to cross-check whether any relationship is asset-specific or general. mETH perp may not exist (skip
-gracefully). Run: python scripts/37_collect_bybit_positioning.py
+gracefully). Run: python scripts/37_collect_exchange_positioning.py
 
 Honesty note: the public perp venue exposes a full HISTORY of funding rates, but only a CURRENT
 snapshot of open interest (holdingAmount on the ticker). We therefore backfill funding over the

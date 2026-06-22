@@ -5,8 +5,8 @@ needs NO api key. This pulls hourly candles (open/high/low/close/VOLUME/turnover
 universe and saves {ticker}_perp_hourly.csv — schema matches our pipeline so add_features / regime /
 walk-forward run unchanged, now WITH real volume (fixes the Pyth no-volume gap).
 
-Run: python scripts/35_collect_bybit.py            # default universe
-     python scripts/35_collect_bybit.py BTC ETH    # subset
+Run: python scripts/35_collect_exchange.py            # default universe
+     python scripts/35_collect_exchange.py BTC ETH    # subset
 """
 from __future__ import annotations
 

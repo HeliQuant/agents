@@ -5,7 +5,7 @@ feed gives real volume, so now we can test honestly: classifier features include
 momentum entry can require volume confirmation (volume_min_ratio). Walk-forward 60/40, grid-search
 on train, lock, test once OOS — same honest protocol as scripts/19. Compares vol-gate OFF vs ON.
 
-Run: python scripts/36_walkforward_bybit_volume.py
+Run: python scripts/36_walkforward_exchange_volume.py
 """
 from __future__ import annotations
 
