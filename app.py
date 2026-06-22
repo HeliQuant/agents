@@ -9,7 +9,7 @@ and exposes endpoints to watch it live:
   GET /health      "ok" (Railway healthcheck)
 
 CONFIG (Railway env vars):
-  ASSETS=BTC            comma-list to analyze each cycle (default BTC)
+  ASSETS=BTC,ETH,...    comma-list to analyze each cycle (default BTC,ETH,SOL,HYPE,SUI,XRP — the Bitget basket)
   INTERVAL_MIN=12       minutes between LLM org cycles (multi-key rotation lifts the old >=15 limit; floor is 5)
   EXECUTE=0             1 = place firm-sanctioned LIVE orders (Bitget); 0 = analyze-only (default, safe)
   REFRESH_DATA=1        1 = re-fetch fresh market data each cycle (needs Bitget public reachable)
@@ -44,7 +44,7 @@ with contextlib.suppress(Exception):
     _creds_store.apply_to_env()
 
 # ── config ──
-ASSETS = [a.strip().upper() for a in os.environ.get("ASSETS", "MNT").split(",") if a.strip()]
+ASSETS = [a.strip().upper() for a in os.environ.get("ASSETS", "BTC,ETH,SOL,HYPE,SUI,XRP").split(",") if a.strip()]
 INTERVAL_MIN = max(int(os.environ.get("INTERVAL_MIN", "30")), 5)  # org-cycle gap. 30min (not 12) keeps the
 #   Groq FREE-tier daily quota alive: a 4–24h-horizon firm doesn't need to re-reason every 12min, and ~12min
 #   cadence burned ~1800 calls/day across the 10 keys -> daily exhaustion (429 on every model). The no-LLM
@@ -858,18 +858,140 @@ async def ingest(req: Request):
     return JSONResponse({"ok": True, "asset": asset, "rows": rows, "last_bar": last})
 
 
+# Self-contained local setup form (static — braces are normal JS, kept OUT of the home() f-string so we
+# don't have to double them). POSTs straight to this same engine's /register over same-origin (no CORS).
+_SETUP_FORM = """
+<details class="card"><summary style="cursor:pointer;color:#1ce5cf;font-weight:700;font-size:15px">▸ Or set up right here — no dApp needed</summary>
+<p class="muted" style="margin-top:8px">Paste your keys below — they POST to <b>THIS</b> engine's <code>/register</code> and land in its local SQLite. Nothing leaves your machine. (Same result as the dApp; this is the no-roundtrip path.)</p>
+<div class="form">
+  <label>setup token <span class="muted">(the HQ_SETUP_TOKEN you ran the engine with — required)</span><input id="f_token" type="password" placeholder="HQ_SETUP_TOKEN"></label>
+  <label>Groq API keys <span class="muted">(1 or more, comma-separated — free at console.groq.com)</span><textarea id="f_groq" rows="2" placeholder="gsk_..., gsk_..., gsk_..."></textarea></label>
+  <div class="row3">
+    <label>Bitget key<input id="f_bk" type="password" placeholder="optional"></label>
+    <label>Bitget secret<input id="f_bs" type="password" placeholder="optional"></label>
+    <label>Bitget passphrase<input id="f_bp" type="password" placeholder="optional"></label>
+  </div>
+  <div class="row3">
+    <label>Bitget demo<select id="f_demo"><option value="1">1 — demo (no real funds, safe)</option><option value="0">0 — mainnet (real)</option></select></label>
+    <label>Bitget execute<select id="f_exec"><option value="0">0 — paper (no orders)</option><option value="1">1 — place live orders</option></select></label>
+    <label>&nbsp;</label>
+  </div>
+  <details><summary class="muted" style="cursor:pointer">advanced — optional desk keys (engine runs without them)</summary>
+    <div class="form" style="margin-top:8px">
+      <label>Mantle wallet private key <span class="muted">(testnet only — anchors decisions on-chain)</span><input id="f_pk" type="password" placeholder="optional — testnet only"></label>
+      <div class="row3">
+        <label>Allora key<input id="f_allora" type="password" placeholder="optional"></label>
+        <label>Nansen key<input id="f_nansen" type="password" placeholder="optional"></label>
+        <label>Elfa key<input id="f_elfa" type="password" placeholder="optional"></label>
+      </div>
+      <label>Mantlescan key<input id="f_mscan" type="password" placeholder="optional"></label>
+    </div>
+  </details>
+  <button id="f_go">Register on this engine →</button>
+  <div id="f_msg" class="muted"></div>
+</div>
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id);};
+  $('f_go').addEventListener('click', async function(){
+    var token=$('f_token').value.trim();
+    if(!token){ $('f_msg').innerHTML='<b style="color:#ff5a1f">setup token required</b>'; return; }
+    var creds={};
+    var g=$('f_groq').value.split(',').map(function(s){return s.trim();}).filter(Boolean).join(',');
+    if(g) creds.GROQ_API_KEY=g;
+    var map={f_bk:'BITGET_API_KEY',f_bs:'BITGET_API_SECRET',f_bp:'BITGET_PASSPHRASE',f_pk:'DEPLOYER_PRIVATE_KEY',f_allora:'ALLORA_API_KEY',f_nansen:'NANSEN_API_KEY',f_elfa:'ELFA_API_KEY',f_mscan:'MANTLESCAN_API_KEY'};
+    for(var id in map){ var v=$(id).value.trim(); if(v) creds[map[id]]=v; }
+    creds.BITGET_DEMO=$('f_demo').value; creds.BITGET_EXECUTE=$('f_exec').value;
+    $('f_msg').innerHTML='registering…';
+    try{
+      var r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token,creds:creds})});
+      var j=await r.json();
+      if(r.ok){ $('f_msg').innerHTML='<b style="color:#c9f24b">✓ registered '+(j.saved||0)+' keys</b> — '+(j.keys||[]).join(', ')+'. reloading…'; setTimeout(function(){location.reload();},1400); }
+      else{ $('f_msg').innerHTML='<b style="color:#ff5a1f">'+(j.error||('error '+r.status))+'</b>'; }
+    }catch(e){ $('f_msg').innerHTML='<b style="color:#ff5a1f">request failed — is the engine reachable?</b>'; }
+  });
+})();
+</script>
+</details>"""
+
+
 @app.get("/", response_class=HTMLResponse)
-def home():
+def home(request: Request):
+    """Local control panel — what a user sees at their engine's localhost:8000 (and at their tunnel URL).
+    Confirms the engine is running, auto-detects the URL to register, and walks the connect-to-dApp steps."""
+    import os as _os
     last = STATE["last_cycle_utc"] or "warming up"
-    decs = "".join(f"<tr><td>{d['utc'][11:19]}</td><td>{d['asset']}</td><td><b>{d['decision']}</b> {d.get('direction') or ''}</td>"
-                   f"<td>{(d.get('reason') or '')[:120]}</td></tr>" for d in list(STATE['decisions'])[:15])
-    return f"""<html><head><title>HeliQuant — live</title>
-<style>body{{font:14px monospace;background:#0b0e11;color:#cdd;padding:24px}}a{{color:#9f9}}
-table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #234;padding:4px 8px;text-align:left}}</style></head>
-<body><h2>🛰️ HeliQuant — autonomous firm (live)</h2>
-<p>cycles: <b>{STATE['cycles']}</b> · last: {last} · assets: {','.join(ASSETS)} · interval: {INTERVAL_MIN}min ·
-execute: {EXECUTE} · error: {STATE['last_error'] or 'none'}</p>
-<p>📜 <a href="/logs">/logs</a> (raw, sanitized) · <a href="/status">/status</a> · <a href="/decisions">/decisions</a></p>
-<h3>recent firm decisions</h3><table><tr><th>utc</th><th>asset</th><th>decision</th><th>why</th></tr>{decs or '<tr><td colspan=4>warming up…</td></tr>'}</table>
-<p style="color:#789">Disciplined by design — it ABSTAINS far more than it trades. Few trades = the gates working.</p>
+    armed = bool(_os.environ.get("HQ_SETUP_TOKEN", "").strip())
+    bitget_armed = _os.environ.get("BITGET_EXECUTE", "0").strip().lower() in {"1", "true", "yes"}
+    try:
+        from firm import creds_store
+        keys = creds_store.stored_keys()
+    except Exception:  # noqa: BLE001
+        keys = []
+    dapp = _os.environ.get("DAPP_URL", "https://heliquant.vercel.app").rstrip("/")
+    my_url = str(request.base_url).rstrip("/")
+    is_local = "localhost" in my_url or "127.0.0.1" in my_url or my_url.endswith(":8000")
+    url_note = ("⚠ this is a LOCAL address — expose it with a tunnel (ngrok) and register the public URL"
+                if is_local else "✓ public URL — paste THIS on the dApp to register")
+    url_color = "#ff5a1f" if is_local else "#1ce5cf"
+    decs = "".join(
+        f"<tr><td>{d['utc'][11:19]}</td><td>{d['asset']}</td>"
+        f"<td><b style='color:#c9f24b'>{d['decision']}</b> {d.get('direction') or ''}</td>"
+        f"<td style='color:#8b8b80'>{(d.get('reason') or '')[:110]}</td></tr>"
+        for d in list(STATE['decisions'])[:12])
+
+    def pill(ok: bool, yes: str, no: str) -> str:
+        c = "#c9f24b" if ok else "#8b8b80"
+        return f"<b style='color:{c}'>{yes if ok else no}</b>"
+
+    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HeliQuant — your local engine</title><style>
+*{{box-sizing:border-box}}body{{font:14px ui-monospace,Menlo,monospace;background:#0b0b0b;color:#f2efe6;margin:0;padding:28px;max-width:980px;margin:0 auto}}
+a{{color:#1ce5cf;text-decoration:none}}a:hover{{text-decoration:underline}}h2{{margin:0;font-size:26px;letter-spacing:.5px}}
+.dot{{display:inline-block;width:10px;height:10px;border-radius:50%;background:#c9f24b;box-shadow:0 0 10px #c9f24b;animation:p 1.4s infinite}}
+@keyframes p{{50%{{opacity:.3}}}}.card{{border:2px solid #2a2a26;background:#161614;padding:14px 16px;margin-top:14px}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:#2a2a26;border:2px solid #2a2a26;margin-top:16px}}
+.cell{{background:#161614;padding:12px 14px}}.k{{color:#8b8b80;font-size:10px;text-transform:uppercase;letter-spacing:1.5px}}
+.v{{font-size:22px;font-weight:800;margin-top:3px}}.urlbox{{border:2px solid {url_color};background:#161614;padding:14px 16px;margin-top:16px;word-break:break-all}}
+.steps li{{margin:7px 0;line-height:1.5}}code{{background:#0b0b0b;border:1px solid #2a2a26;padding:1px 6px;color:#c9f24b}}
+table{{border-collapse:collapse;width:100%;margin-top:10px;font-size:12px}}td,th{{border:1px solid #222;padding:4px 8px;text-align:left}}
+th{{color:#8b8b80;font-weight:600;text-transform:uppercase;font-size:10px}}.muted{{color:#8b8b80}}
+.form{{display:grid;gap:11px;margin-top:12px}}.row3{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}}
+label{{display:flex;flex-direction:column;gap:4px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#bcbcb2}}
+label .muted{{text-transform:none;letter-spacing:0;font-size:10px}}
+input,textarea,select{{background:#0b0b0b;border:1px solid #2a2a26;color:#f2efe6;padding:8px;font:13px ui-monospace,monospace;width:100%}}
+input:focus,textarea:focus,select:focus{{outline:none;border-color:#1ce5cf}}
+button{{background:#c9f24b;color:#0b0b0b;border:none;padding:11px 18px;font:700 14px ui-monospace,monospace;cursor:pointer;text-transform:uppercase;letter-spacing:1px;width:fit-content}}
+button:hover{{background:#d8ff63}}@media(max-width:640px){{.row3{{grid-template-columns:1fr}}}}</style></head>
+<body>
+<h2><span class="dot"></span> HeliQuant · your engine is <span style="color:#c9f24b">RUNNING</span></h2>
+<p class="muted">an autonomous multi-desk AI trading firm, running on your machine — your keys, no custody.</p>
+
+<div class="urlbox"><div class="k">your engine URL</div>
+<div style="font-size:18px;color:{url_color};margin-top:4px">{my_url}</div>
+<div class="muted" style="margin-top:4px">{url_note}</div></div>
+
+<div class="grid">
+<div class="cell"><div class="k">cycles run</div><div class="v">{STATE['cycles']}</div></div>
+<div class="cell"><div class="k">last cycle</div><div class="v" style="font-size:13px">{last}</div></div>
+<div class="cell"><div class="k">assets</div><div class="v" style="font-size:13px">{','.join(ASSETS)}</div></div>
+<div class="cell"><div class="k">register endpoint</div><div class="v" style="font-size:16px">{pill(armed,'ARMED','OFF — set HQ_SETUP_TOKEN')}</div></div>
+<div class="cell"><div class="k">credentials on file</div><div class="v" style="font-size:16px">{pill(bool(keys), str(len(keys))+' keys', 'none yet')}</div></div>
+<div class="cell"><div class="k">Bitget execution</div><div class="v" style="font-size:16px">{pill(bitget_armed,'ARMED (demo)','paper')}</div></div>
+</div>
+
+<div class="card"><b style="color:#c9f24b">▸ Connect this engine to the dApp</b>
+<ol class="steps">
+<li><b>Expose it</b> with a tunnel: <code>ngrok http 8000</code> → copy the <code>https://…ngrok-free.app</code> URL{(' (or just use the URL above)' if not is_local else '')}.</li>
+<li><b>Open the dApp</b> → <a href="{dapp}/onboarding">Register your engine →</a></li>
+<li><b>Paste</b> your engine URL + your <code>HQ_SETUP_TOKEN</code> + your keys (Groq, Bitget…) → <b>Register</b>. The keys POST straight here, land in this engine's local SQLite — they never touch the hosted site.</li>
+</ol>
+<div class="muted" style="margin-top:6px">Next time: use <b>"Already set up → connect"</b> on the dApp to reconnect.</div></div>
+
+{_SETUP_FORM}
+
+<h3 style="margin-top:24px">recent firm decisions</h3>
+<table><tr><th>utc</th><th>asset</th><th>decision</th><th>why</th></tr>{decs or '<tr><td colspan=4 class="muted">warming up… first cycle within a few minutes</td></tr>'}</table>
+<p class="muted" style="margin-top:10px">Disciplined by design — it ABSTAINS far more than it trades. Few trades = the gates working, not a bug.</p>
+<p class="muted" style="font-size:12px">live: <a href="/logs">/logs</a> · <a href="/status">/status</a> · <a href="/decisions">/decisions</a> · <a href="/campaign">/campaign</a> · <a href="/bitget-crowd">/bitget-crowd</a> · <a href="/setup-status">/setup-status</a></p>
 </body></html>"""
