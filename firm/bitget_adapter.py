@@ -132,6 +132,18 @@ def get_balance() -> tuple[float, float]:
     return 0.0, 0.0
 
 
+def account_summary() -> dict:
+    """Fuller account read for the UI: available + equity + live unrealized P&L (account-level, from the API)."""
+    for a in accounts():
+        if a.get("marginCoin") == _margin():
+            return {
+                "available_usd": float(a.get("available", 0) or 0),
+                "equity_usd": float(a.get("usdtEquity", a.get("accountEquity", 0)) or 0),
+                "unrealized_pnl_usd": float(a.get("unrealizedPL", a.get("crossedUnrealizedPL", 0)) or 0),
+            }
+    return {"available_usd": 0.0, "equity_usd": 0.0, "unrealized_pnl_usd": 0.0}
+
+
 def get_ticker(asset: str) -> float:
     sym = to_symbol(asset)
     if not sym:

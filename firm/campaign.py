@@ -1324,8 +1324,22 @@ def status() -> dict:
     try:  # real exchange saldo when execution is armed (defensive — never breaks the snapshot)
         if os.environ.get("BITGET_EXECUTE", "0").strip().lower() in {"1", "true", "yes"}:
             from firm import bitget_adapter as _bg
-            _av, _eq = _bg.get_balance()
-            _capital["bitget_saldo"] = {"available_usd": round(_av, 2), "equity_usd": round(_eq, 2), "demo": _bg.is_demo()}
+            from firm import state_store as _ss
+            _s = _bg.account_summary()
+            _bav, _beq, _bunreal = _s["available_usd"], _s["equity_usd"], _s["unrealized_pnl_usd"]
+            _bcash = _beq - _bunreal  # realized/cash basis right now (equity minus live unrealized)
+            _baseline = _ss.load("bitget:baseline_equity")  # first cash level we ever saw — the ROI anchor
+            if not _baseline or float(_baseline) <= 0:
+                _baseline = round(_bcash, 2)
+                _ss.save("bitget:baseline_equity", _baseline)
+            _baseline = float(_baseline)
+            _brealized = round(_bcash - _baseline, 2)
+            _btotal = round(_brealized + _bunreal, 2)
+            _capital["bitget_saldo"] = {
+                "available_usd": round(_bav, 2), "equity_usd": round(_beq, 2),
+                "baseline_usd": round(_baseline, 2), "realized_pnl_usd": _brealized,
+                "unrealized_pnl_usd": round(_bunreal, 2), "roi_pct": round(_btotal / _baseline * 100, 2) if _baseline else 0.0,
+                "demo": _bg.is_demo()}
     except Exception:  # noqa: BLE001
         pass
     return {"target": None, "continuous": True,  # no lifetime cap — fully autonomous, never 'done'
