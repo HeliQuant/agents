@@ -193,6 +193,37 @@ def public_candles(asset: str, granularity: str = "1H", limit: int = 100) -> lis
             for r in rows]
 
 
+def crowd_positioning(asset: str, period: str = "1h") -> dict:
+    """Public mainnet CROWD positioning (keyless) — aggregate retail long/short, NOT individual whales
+    (a CEX exposes no per-trader positions). Account ratio = % of accounts long/short; position ratio =
+    % of open interest long/short; plus total open interest. A contrarian sentiment read."""
+    sym = _pub_symbol(asset)
+    out: dict = {"asset": asset.upper(), "symbol": sym, "long_acct_pct": None, "short_acct_pct": None,
+                 "long_pos_pct": None, "short_pos_pct": None, "open_interest": None}
+    try:
+        a = _public("/api/v2/mix/market/account-long-short", {"symbol": sym, "period": period})
+        row = (a[0] if isinstance(a, list) and a else a) or {}
+        out["long_acct_pct"] = round(float(row.get("longAccountRatio", 0) or 0) * 100, 1)
+        out["short_acct_pct"] = round(float(row.get("shortAccountRatio", 0) or 0) * 100, 1)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        p = _public("/api/v2/mix/market/position-long-short", {"symbol": sym, "period": period})
+        row = (p[0] if isinstance(p, list) and p else p) or {}
+        out["long_pos_pct"] = round(float(row.get("longPositionRatio", 0) or 0) * 100, 1)
+        out["short_pos_pct"] = round(float(row.get("shortPositionRatio", 0) or 0) * 100, 1)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        oi = _public("/api/v2/mix/market/open-interest", {"symbol": sym, "productType": "usdt-futures"})
+        lst = (oi or {}).get("openInterestList") or []
+        if lst:
+            out["open_interest"] = float(lst[0].get("size") or 0)
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 def get_positions() -> list:
     return _request("GET", "/api/v2/mix/position/all-position", params={"productType": _product(), "marginCoin": _margin()}) or []
 

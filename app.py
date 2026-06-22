@@ -756,6 +756,29 @@ def bitget_data(asset: str = "BTC", candles: int = 0):
         return JSONResponse({"error": str(e)[:160]}, status_code=200)
 
 
+@app.get("/bitget-crowd")
+def bitget_crowd():
+    """Bitget aggregate CROWD positioning per basket asset (keyless) — retail long/short account ratio,
+    position ratio, open interest. The crowd, to set against the Hyperliquid smart-money whales."""
+    try:
+        from firm import bitget_adapter as bg
+        try:
+            from firm.campaign import BASKET
+        except Exception:  # noqa: BLE001
+            BASKET = ["BTC", "ETH", "SOL", "HYPE", "SUI", "XRP"]
+        rows = []
+        for a in BASKET:
+            try:
+                rows.append(bg.crowd_positioning(a))
+            except Exception:  # noqa: BLE001
+                pass
+        return JSONResponse({"asof": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                             "source": "Bitget mainnet (keyless) — aggregate crowd, not individual whales",
+                             "assets": rows})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)[:160]}, status_code=200)
+
+
 @app.get("/setup-status")
 def setup_status():
     """Onboarding status — which credential KEY NAMES this engine has on file (never values) + whether
