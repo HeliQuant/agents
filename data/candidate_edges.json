@@ -1,62 +1,15 @@
 {
-  "HYPE": {
-    "edge": "oi_contrarian",
-    "asset": "HYPE",
-    "validated": false,
-    "horizon_h": 48,
-    "p_win": 0.4865,
-    "payoff_b": 2.009,
-    "sample_n": 37,
-    "oos_roi_pct": 78.02,
-    "pval": 0.1254,
-    "tier": "candidate",
-    "confirmations": 0,
-    "note": "oi_contrarian @48h, surfaced by the deep multi-horizon hunt (scripts/93): cost-aware OOS +78%, walk-forward 4/5 folds +ve, ex-best mean +8.2% (outlier-robust), STABLE across 80/90/100% cutoffs. The edge is payoff-asymmetry (48.6% win, payoff 2.0 \u2014 wins 2x losers), not hit-rate, so pval is 0.125. PROBATION: 48h horizon (non-standard vs the 24h registry), and HYPE's PRIOR flow_contrarian candidate DECAYED on new data (#26) \u2014 must confirm on FRESH data before graduating to validated + earning aggression. Replaces the decayed flow_contrarian entry."
-  },
-  "SEI": {
-    "edge": "funding_fade",
-    "asset": "SEI",
-    "validated": false,
-    "p_win": 0.5049,
-    "payoff_b": 1.199,
-    "sample_n": 103,
-    "oos_roi_pct": 26.2,
-    "note": "funding_fade via edge_lab onboarding (non-overlap 24h, cost-aware OOS, 3/5 walk-forward folds +ve). avg 31.3bps > 11.0bps fee; sample 103. CANDIDATE \u2014 passed 1-split, not walk-forward-robust; paper-only.",
-    "tier": "candidate"
-  },
   "SUI": {
     "edge": "funding_fade",
     "asset": "SUI",
     "validated": false,
-    "p_win": 0.582,
-    "payoff_b": 1.396,
+    "p_win": 0.5902,
+    "payoff_b": 1.263,
     "sample_n": 122,
-    "oos_roi_pct": 205.79,
-    "note": "funding_fade via edge_lab onboarding (non-overlap 24h, cost-aware OOS, 4/5 walk-forward folds +ve). avg 100.6bps > 11.0bps fee; sample 122. CANDIDATE (ROBUST) \u2014 awaiting scripts/60 NEW-DATA confirmation before live.",
+    "oos_roi_pct": 183.57,
+    "note": "funding_fade via edge_lab onboarding (non-overlap 24h, cost-aware OOS, 4/5 walk-forward folds +ve). avg 94.8bps > 20.0bps fee; sample 122. CANDIDATE (ROBUST) \u2014 awaiting scripts/60 NEW-DATA confirmation before live.",
     "tier": "candidate",
     "confirmations": 1,
     "last_confirm_bar": "2026-06-04 23:00:00+00:00"
-  },
-  "TIA": {
-    "edge": "funding_fade",
-    "asset": "TIA",
-    "validated": false,
-    "p_win": 0.5769,
-    "payoff_b": 0.911,
-    "sample_n": 182,
-    "oos_roi_pct": 67.0,
-    "note": "funding_fade via edge_lab onboarding (non-overlap 24h, cost-aware OOS, 2/5 walk-forward folds +ve). avg 42.6bps > 11.0bps fee; sample 182. CANDIDATE \u2014 passed 1-split, not walk-forward-robust; paper-only.",
-    "tier": "candidate"
-  },
-  "MNT": {
-    "edge": "oi_contrarian",
-    "asset": "MNT",
-    "validated": false,
-    "p_win": 0.5882,
-    "payoff_b": 1.22,
-    "sample_n": 34,
-    "oos_roi_pct": 25.1,
-    "note": "OI-contrarian, OOS (non-overlap 24h). Net of REALISTIC cost = fee + spread + slippage (~20 bps round-trip), not fee-only (was +28.9%@11bps). Gross edge ~+90 bps/trade; net +70.4 bps. Hedge-like + bear-amplified + small-sample -> caveated; LIQUID-venue only (wide spread eats it); sizing gates on sample_n>=20.",
-    "tier": "candidate"
   }
 }
