@@ -1,10 +1,13 @@
 """scripts/82 — SIGNAL-DRIVEN BUY-AND-HOLD executor (the fix from the live-trade lesson, NOT scalping).
 
 Reads the validated edge's LIVE signal FIRST (read the market), and only acts on an actionable LONG: it
-BUYS spot, then HOLDS for the edge's horizon (24h) — exiting when the horizon elapses OR the signal flips.
-This is the opposite of the 100x round-trip stress test (which only paid the spread): a real edge-driven
-position that needs the market to MOVE to profit. Spot-only, so it executes the LONG side of the edge
-(SHORT needs derivatives, which the exchange geo-bans here -> use Hyperliquid). Profit = price move − realistic cost.
+BUYS, then HOLDS for the edge's horizon (24h) — exiting when the horizon elapses OR the signal flips. This
+is the opposite of the 100x round-trip stress test (which only paid the spread): a real edge-driven position
+that needs the market to MOVE to profit. Profit = price move - realistic cost.
+
+DEMO HAS NO SPOT: the Bitget demo is perp-only, so the BUY/SELL legs here are recorded as honest PAPER fills
+(a paper LONG held per the edge horizon), and the reference price comes from the asset's own positioning
+data — NOT a fabricated venue fill. SHORT signals abstain (route shorts to a perp venue like Hyperliquid).
 
 Run:  python scripts/82_edge_execute.py --open  --live --symbol MNTUSDT --notional 100   # enter if signal LONG
       python scripts/82_edge_execute.py --status                                          # show held position
@@ -22,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 sys.path.insert(0, str(ROOT))
-from firm import bybit_executor as ex  # noqa: E402
+from firm import exchange_executor as ex  # noqa: E402
 from firm.edge_lab import H as EDGE_HORIZON_H, live_signal  # noqa: E402
 
 # The hold is NOT an arbitrary choice: it's pulled straight from edge_lab.H — the SAME holding window the
@@ -30,36 +33,26 @@ from firm.edge_lab import H as EDGE_HORIZON_H, live_signal  # noqa: E402
 # faithfully, not a test setting. Change the edge's horizon and the executor follows automatically.
 HORIZON_H = EDGE_HORIZON_H
 POS_FILE = DATA / "live_position.json"
-# the executor signs against this venue; the price read below must use the SAME testnet host
-EXCHANGE_TESTNET = "https://api-testnet.bybit.com"
 
 
 def _price(symbol: str) -> float:
-    """SPOT last price — MUST match the spot position's leg (testnet perp != spot, mixing them = fake P&L)."""
-    import requests
-    return float(requests.get(EXCHANGE_TESTNET + "/v5/market/tickers", params={"category": "spot", "symbol": symbol}, timeout=10)
-                 .json()["result"]["list"][0]["lastPrice"])
+    """Reference price from the asset's positioning data (last close) — honest paper price, no venue read.
+    The Bitget demo is perp-only with no spot, so there is no live spot fill to price against."""
+    import pandas as pd
+    base = symbol[:-4].lower()
+    fp = DATA / f"{base}_positioning.csv"
+    if not fp.exists():
+        return 0.0
+    df = pd.read_csv(fp)
+    return float(df["close"].iloc[-1]) if "close" in df.columns and len(df) else 0.0
 
 
-def _bal(coin: str) -> float:
-    res = ex._ok(ex._read_session().get_wallet_balance(accountType="UNIFIED"))
-    for a in res.get("list", []):
-        for c in a.get("coin", []):
-            if c.get("coin") == coin:
-                return float(c.get("walletBalance") or 0)
-    return 0.0
-
-
-def _spot(side: str, qty, symbol: str, quote: bool = False) -> dict:
-    intended = {"category": "spot", "symbol": symbol, "side": side, "orderType": "Market", "qty": str(qty)}
-    if quote:
-        intended["marketUnit"] = "quoteCoin"
-    if ex.DRY_RUN:
-        print(f"  [DRY] {side} spot {qty} {symbol} ({'USDT' if quote else 'base'}) — not sent")
-        return {"dry_run": True}
-    res = ex._ok(ex._trade_session().place_order(**intended))
-    print(f"  [LIVE] {side} spot {qty} {symbol} -> orderId {res.get('orderId')}")
-    return res
+def _paper_spot(side: str, qty, symbol: str, quote: bool = False) -> dict:
+    """Spot leg is PAPER — the Bitget demo is perp-only, so we never hit the venue for spot."""
+    base = symbol[:-4]
+    unit = "USDT" if quote else "base"
+    print(f"  [paper] spot leg not on Bitget demo — {side} {qty} {base} ({unit}) recorded as paper")
+    return {"paper": True}
 
 
 def open_position(symbol: str, edge: str, notional: float, live: bool) -> None:
@@ -68,7 +61,7 @@ def open_position(symbol: str, edge: str, notional: float, live: bool) -> None:
     s, act = sig.get("signal"), sig.get("actionable")
     print(f"READ MARKET: {symbol} edge={edge} -> signal={s}, actionable={act}")
     if s == "SHORT":
-        print("  SHORT signal — spot can't short (derivatives geo-banned here). ABSTAIN. (route shorts to Hyperliquid.)")
+        print("  SHORT signal — spot can't short and the demo is perp-only. ABSTAIN. (route shorts to a perp venue.)")
         return
     if s != "LONG" or not act:
         print("  not an actionable LONG -> ABSTAIN. (reads the market first; no signal = no trade, no churn.)")
@@ -78,21 +71,20 @@ def open_position(symbol: str, edge: str, notional: float, live: bool) -> None:
         return
     ex.set_dry_run(not live)
     px = _price(symbol)
-    before = _bal(base) if live else 0.0
-    print(f"  signal LONG @ ~${px:.4f} -> BUY ${notional} {base} spot, then HOLD {HORIZON_H}h (per edge):")
-    _spot("Buy", notional, symbol, quote=True)
+    print(f"  signal LONG @ ~${px:.4f} -> BUY ${notional} {base} (PAPER), then HOLD {HORIZON_H}h (per edge):")
+    _paper_spot("Buy", notional, symbol, quote=True)
     if not live:
-        print("  (DRY — nothing sent. Add --live to enter for real.)")
+        print("  (DRY — nothing sent. Add --live to record the paper entry for real.)")
         return
-    time.sleep(1.5)
-    qty = round(_bal(base) - before, 6)
-    entry_px = notional / qty if qty > 0 else px
+    time.sleep(0.5)
+    qty = round(notional / px, 6) if px > 0 else 0.0
+    entry_px = px
     now = datetime.now(timezone.utc)
     pos = {"symbol": symbol, "base": base, "edge": edge, "qty": qty, "entry_px": round(entry_px, 6),
            "notional": notional, "entry_utc": now.isoformat(),
-           "hold_until_utc": (now + timedelta(hours=HORIZON_H)).isoformat(), "signal": "LONG"}
+           "hold_until_utc": (now + timedelta(hours=HORIZON_H)).isoformat(), "signal": "LONG", "paper": True}
     POS_FILE.write_text(json.dumps(pos, indent=2))
-    print(f"  ✓ OPENED: long {qty} {base} @ ~${entry_px:.4f}. HOLDING until {pos['hold_until_utc']} "
+    print(f"  ✓ OPENED (paper): long {qty} {base} @ ~${entry_px:.4f}. HOLDING until {pos['hold_until_utc']} "
           f"(24h) or until the signal flips. THIS IS A HELD POSITION — not a scalp. Profit needs price to move up.")
 
 
@@ -127,12 +119,11 @@ def manage(live: bool) -> None:
         return
     reason = "24h horizon elapsed" if expired else "signal flipped (no longer LONG)"
     ex.set_dry_run(not live)
-    print(f"EXIT ({reason}): selling {base} spot...")
-    bal = _bal(base) if live else pos["qty"]
-    _spot("Sell", round(bal, 5), pos["symbol"])
+    print(f"EXIT ({reason}): selling {base} (PAPER)...")
+    _paper_spot("Sell", round(pos["qty"], 5), pos["symbol"])
     if live:
         realized = (px - pos["entry_px"]) * pos["qty"]
-        print(f"  ✓ CLOSED: held to {reason}. exit ~${px:.4f} vs entry ${pos['entry_px']:.4f} | realized ~${realized:+.2f}")
+        print(f"  ✓ CLOSED (paper): held to {reason}. exit ~${px:.4f} vs entry ${pos['entry_px']:.4f} | realized ~${realized:+.2f}")
         POS_FILE.unlink()
 
 
@@ -141,7 +132,7 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:  # noqa: BLE001
         pass
-    ap = argparse.ArgumentParser(description="Signal-driven buy-and-hold executor (exchange spot, testnet).")
+    ap = argparse.ArgumentParser(description="Signal-driven buy-and-hold executor (Bitget demo is perp-only -> spot legs paper).")
     ap.add_argument("--open", action="store_true")
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--manage", action="store_true")

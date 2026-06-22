@@ -1,16 +1,20 @@
-"""scripts/80 — execute the delta-neutral HYPE CARRY on the exchange testnet (long spot + short perp).
+"""scripts/80 — execute the delta-neutral CARRY on the exchange demo (long spot + short perp).
 
-The ONLY honest way to "live-trade HYPE": NOT the dead directional edge (the firm refuses it), but the
-validated market-neutral CARRY — long HYPE spot + short HYPE perp, equal base size, so price cancels and
-you collect funding. Reuses the firm's signed executor sessions (pybit). DRY_RUN by default; --live fires.
+The ONLY honest way to "live-trade" the carry: NOT the dead directional edge (the firm refuses it), but the
+validated market-neutral CARRY — long spot + short perp, equal base size, so price cancels and you collect
+funding. Uses the firm's Bitget demo executor (firm.exchange_executor). DRY_RUN by default; --live fires.
 
-HONEST: testnet fills aren't realistic and the carry's ~+5.8%/yr profit accrues via 8h funding over a
-quarter — so this proves the EXECUTION PIPELINE (both legs fire, position is delta-neutral), not a
-session P&L. Profit ≠ what you'll see in five minutes.
+DEMO IS PERP-ONLY: the Bitget demo has NO spot, so the SPOT leg is recorded as an honest PAPER fill and only
+the PERP leg fires on the venue — the position is effectively perp-only on the demo. The Bitget demo also
+lists only BTC/ETH/XRP perps, so any other asset's perp leg degrades to paper too (no fabricated fill).
+
+HONEST: demo fills aren't realistic and the carry's profit accrues via 8h funding over a quarter — so this
+proves the EXECUTION PIPELINE (the perp leg fires, the spot leg is booked as paper), not a session P&L.
+Profit != what you'll see in five minutes.
 
 Run:  python scripts/80_carry_execute.py --check
       python scripts/80_carry_execute.py --open               # DRY: print the two legs
-      python scripts/80_carry_execute.py --open --live        # fire on testnet (needs testnet USDT)
+      python scripts/80_carry_execute.py --open --live        # fire on the demo (perp leg real, spot paper)
       python scripts/80_carry_execute.py --close --live
 """
 from __future__ import annotations
@@ -21,9 +25,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from firm import bybit_executor as ex  # noqa: E402
+from firm import exchange_executor as ex  # noqa: E402
 
-SYMBOL = "HYPEUSDT"
+SYMBOL = "BTCUSDT"  # demo perps = BTC/ETH/XRP; other assets degrade to paper on the perp leg too
 
 
 def _spot_balance(coin: str) -> float:
@@ -37,72 +41,59 @@ def _spot_balance(coin: str) -> float:
     return 0.0
 
 
-def _place(category: str, side: str, qty, market_unit: str | None = None) -> dict:
-    """Market order on `category` (spot|linear), DRY_RUN-guarded (mirrors the executor's place_market_order)."""
-    intended = {"category": category, "symbol": SYMBOL, "side": side, "orderType": "Market", "qty": str(qty)}
-    if category == "spot" and market_unit:
-        intended["marketUnit"] = market_unit  # quoteCoin -> qty is USDT; else base
-    unit = intended.get("marketUnit", "baseCoin")
-    # NOTE: signed order routing + the testnet venue below are the executor's path (kept intact).
-    if ex.DRY_RUN:
-        print(f"  [DRY] {side:4} {category:6} MARKET qty={qty} ({unit}) {SYMBOL} — NOT sent")
-        return {"dry_run": True, "intended": intended}
-    res = ex._ok(ex._trade_session().place_order(**intended))
-    print(f"  [LIVE] {side:4} {category:6} MARKET {qty} {SYMBOL} -> orderId {res.get('orderId')}")
-    return {"dry_run": False, "order_id": res.get("orderId")}
+def _paper_spot(side: str, qty, base: str) -> None:
+    """Spot leg is PAPER — the Bitget demo is perp-only, so we never hit the venue for spot."""
+    print(f"  [paper] spot leg not on Bitget demo — {side} {qty} {base} recorded as paper")
+
+
+def _perp(side: str, qty) -> dict:
+    """Real perp market order on the demo (DRY_RUN-guarded inside the executor)."""
+    return ex.place_market_order(SYMBOL, side, qty, reduce_only=False)
 
 
 def _perp_lot():
     """(qtyStep, minOrderQty) for the perp — orders must be whole multiples of step."""
-    import requests
-    it = requests.get("https://api-testnet.bybit.com/v5/market/instruments-info",
-                      params={"category": "linear", "symbol": SYMBOL}, timeout=10).json()["result"]["list"][0]
-    lot = it["lotSizeFilter"]
-    return float(lot["qtyStep"]), float(lot["minOrderQty"])
+    inst = ex.get_instrument(SYMBOL)
+    step = float(inst.get("qty_step") or 0.001)
+    minq = float(inst.get("min_order_qty") or step)
+    return step, minq
 
 
 def open_carry(notional: float, live: bool) -> None:
-    """Long ~$notional of spot (market BUY by quote) + SHORT the matching base on the perp -> delta-neutral.
-    Sizes to the perp's LOT STEP (the constraining leg) so both legs match and net delta ~0."""
+    """Long ~$notional of spot (PAPER on the demo) + SHORT the matching base on the perp (REAL) -> delta-neutral
+    in design. Sizes to the perp's LOT STEP (the constraining leg) so both legs match and net delta ~0."""
     import time
-    import requests
     ex.set_dry_run(not live)
-    base = SYMBOL[:-4]  # e.g. SUI from SUIUSDT
-    px = float(requests.get("https://api-testnet.bybit.com/v5/market/tickers",
-                            params={"category": "linear", "symbol": SYMBOL}, timeout=10).json()["result"]["list"][0]["lastPrice"])
+    base = SYMBOL[:-4]  # e.g. BTC from BTCUSDT
     step, minq = _perp_lot()
-    target = max(int((notional / px) / step) * step, minq)   # perp size, lot-aligned
-    spot_quote = round(target * px, 2)                        # buy ~the same base amount on spot
-    print(f"OPEN CARRY {SYMBOL}: long ~{target} {base} spot (~${spot_quote}) + short {target} perp  "
-          f"({base}~${px:.4f}; lot {step}; delta-neutral; testnet={ex.is_testnet()})")
-    _place("spot", "Buy", spot_quote, market_unit="quoteCoin")  # leg 1: long spot, qty in USDT
+    target = max(int((notional / max(step, 1e-9)) ) * step, minq) if notional >= step else minq
+    # Spot leg is paper-only, so we size in base units off the perp's lot step (no live venue price read).
+    print(f"OPEN CARRY {SYMBOL}: long ~{target} {base} spot (PAPER) + short {target} perp  "
+          f"(lot {step}; delta-neutral design; demo={ex.is_demo()})")
+    _paper_spot("Buy", target, base)  # leg 1: long spot — PAPER (demo is perp-only)
     if not live:
-        _place("linear", "Sell", target)
-        print("\n(DRY_RUN — nothing sent. Add --live to fire on testnet.)")
+        _perp("Sell", target)
+        print("\n(DRY_RUN — nothing sent. Add --live to fire the perp leg on the demo.)")
         return
     time.sleep(1.5)
-    _place("linear", "Sell", target)  # leg 2: short the matching base -> hedge
+    _perp("Sell", target)  # leg 2: short the matching base on the perp -> hedge (REAL)
     print("\nVERIFY:")
-    spot_bal = _spot_balance(base)
+    print(f"  spot {base} long: PAPER (demo is perp-only)")
     pos = ex.get_positions(SYMBOL)
-    print(f"  spot {base} long: {spot_bal}")
     print(f"  perp short: {pos if pos else 'flat'}")
-    net = spot_bal - (pos[0]["size"] if pos else 0)
-    print(f"  net delta (spot - perp): {net:+.4f} {base}  -> {'~NEUTRAL ✓' if abs(net) < step else 'residual within one lot step (slippage)'}")
+    print(f"  net delta: paper-spot + real-perp short -> effectively perp-only on the demo")
 
 
 def close_carry(live: bool) -> None:
     ex.set_dry_run(not live)
     base = SYMBOL[:-4]
-    print(f"CLOSE CARRY {SYMBOL}: sell spot + buy-back perp short")
-    sb = _spot_balance(base)
-    if sb > 0:
-        _place("spot", "Sell", round(sb, 5))
+    print(f"CLOSE CARRY {SYMBOL}: sell spot (PAPER) + buy-back perp short")
+    _paper_spot("Sell", "held", base)  # spot leg is paper
     pos = ex.get_positions(SYMBOL)
     if pos:
-        _place("linear", "Buy", pos[0]["size"])  # reduce-only effect: closes short
-    if not pos and sb == 0:
-        print("  nothing open.")
+        _perp("Buy", pos[0]["size"])  # reduce-only effect: closes short
+    else:
+        print("  perp: nothing open.")
 
 
 def main():
@@ -110,25 +101,25 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:  # noqa: BLE001
         pass
-    ap = argparse.ArgumentParser(description="HeliQuant delta-neutral HYPE carry executor (exchange testnet).")
+    ap = argparse.ArgumentParser(description="HeliQuant delta-neutral carry executor (Bitget demo, perp-only).")
     ap.add_argument("--check", action="store_true", help="auth + USDT balance (read-only)")
     ap.add_argument("--open", action="store_true", help="open the carry (DRY unless --live)")
     ap.add_argument("--close", action="store_true", help="close the carry (DRY unless --live)")
     ap.add_argument("--notional", type=float, default=100.0, help="USDT notional for the carry (default 100 = 1% of 10k)")
-    ap.add_argument("--symbol", default="HYPEUSDT", help="perp+spot symbol (default HYPEUSDT; e.g. SUIUSDT)")
-    ap.add_argument("--live", action="store_true", help="actually transmit (testnet)")
+    ap.add_argument("--symbol", default="BTCUSDT", help="perp symbol (default BTCUSDT; demo perps = BTC/ETH/XRP)")
+    ap.add_argument("--live", action="store_true", help="actually transmit the perp leg (demo)")
     args = ap.parse_args()
 
     global SYMBOL
     SYMBOL = args.symbol.upper()
-    print(f"[carry-exec] symbol={SYMBOL}  testnet={ex.is_testnet()}  live={args.live}\n")
+    print(f"[carry-exec] symbol={SYMBOL}  demo={ex.is_demo()}  live={args.live}\n")
     try:
         if args.check:
             st = ex.check_auth(); print("auth:", st)
             bal = ex.get_wallet_balance()
             print(f"USDT equity={bal.get('equity_usdt')} available={bal.get('available_usdt')} | total_equity={bal.get('total_equity')}")
             if not bal.get("total_equity"):
-                print("\n⚠️  testnet wallet EMPTY — claim test USDT from the exchange testnet faucet (Assets) before --live.")
+                print("\n⚠️  demo wallet EMPTY — fund the Bitget demo account before --live.")
         if args.open:
             open_carry(args.notional, args.live)
         if args.close:

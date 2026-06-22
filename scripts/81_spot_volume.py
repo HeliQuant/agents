@@ -1,15 +1,15 @@
-"""scripts/81 — LIVE spot execution STRESS TEST: N buy+sell round-trips per asset on the exchange testnet.
+"""scripts/81 — spot execution stress test: N buy+sell round-trips per asset (PAPER on the Bitget demo).
 
-Proves the executor handles real volume on a live venue (exchange SPOT — derivatives are geo-banned, spot
-is not). Each round-trip = market BUY $notional + market SELL it back; both legs are REAL fills. Skips any
-asset with an empty testnet orderbook (e.g. HYPE has no testnet liquidity). Logs fills, failures, and the
-cumulative cost (USDT delta).
+Originally a LIVE spot stress test, but the Bitget demo has NO spot market — so each round-trip is recorded
+as an honest PAPER fill rather than a fabricated venue order. Each round-trip = market BUY $notional + market
+SELL it back; on a real spot venue both legs pay the bid-ask spread + fees. Here the legs are paper, so there
+is no realized cost to measure (cost = 0 by construction — there is no venue fill to charge a spread).
 
-HONEST: this is an EXECUTION stress test, NOT a profit demo. An immediate buy+sell pays the bid-ask spread
-+ fees every time, so the cumulative result is a small LOSS BY DESIGN (~spread×N). Profit comes from the
-STRATEGY holding per a validated signal, not from churning round-trips.
+HONEST: this is an EXECUTION-FLOW proof on the demo (the loop runs, both legs are booked), NOT a profit demo
+and NOT a real-fill cost measurement. On a live spot venue an immediate buy+sell is a small LOSS BY DESIGN
+(~spread x N); profit comes from the STRATEGY holding per a validated signal, not from churning round-trips.
 
-Run:  python scripts/81_spot_volume.py MNTUSDT SUIUSDT HYPEUSDT --n 100 --notional 100
+Run:  python scripts/81_spot_volume.py BTCUSDT ETHUSDT XRPUSDT --n 100 --notional 100
 """
 from __future__ import annotations
 
@@ -17,94 +17,34 @@ import sys
 import time
 from pathlib import Path
 
-import requests
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from firm import bybit_executor as ex  # noqa: E402
-
-# the executor signs against this venue; auxiliary market reads below must use the SAME testnet host
-EXCHANGE_TESTNET = "https://api-testnet.bybit.com"
+from firm import exchange_executor as ex  # noqa: E402
 
 
-def _usdt() -> float:
-    res = ex._ok(ex._read_session().get_wallet_balance(accountType="UNIFIED"))
-    for a in res.get("list", []):
-        for c in a.get("coin", []):
-            if c.get("coin") == "USDT":
-                return float(c.get("walletBalance") or 0)
-    return 0.0
-
-
-def _coin(coin: str) -> float:
-    res = ex._ok(ex._read_session().get_wallet_balance(accountType="UNIFIED"))
-    for a in res.get("list", []):
-        for c in a.get("coin", []):
-            if c.get("coin") == coin:
-                return float(c.get("walletBalance") or 0)
-    return 0.0
-
-
-def _orderbook_liquid(symbol: str) -> bool:
-    j = requests.get(EXCHANGE_TESTNET + "/v5/market/orderbook", params={"category": "spot", "symbol": symbol, "limit": 1}, timeout=10).json()
-    r = j.get("result", {})
-    return bool(r.get("b")) and bool(r.get("a"))
-
-
-def _base_precision(symbol: str) -> float:
-    it = requests.get(EXCHANGE_TESTNET + "/v5/market/instruments-info", params={"category": "spot", "symbol": symbol}, timeout=10).json()["result"]["list"][0]
-    return float(it["lotSizeFilter"]["basePrecision"])
-
-
-def _floor(x: float, step: float) -> float:
-    return (int(x / step)) * step if step > 0 else x
+def _paper_spot(symbol: str, side: str, qty) -> None:
+    """Spot leg is PAPER — the Bitget demo is perp-only, so we never hit the venue for spot."""
+    base = symbol.replace("USDT", "")
+    print(f"  [paper] spot leg not on Bitget demo — {side} {qty} {base} recorded as paper")
 
 
 def round_trips(symbol: str, n: int, notional: float) -> dict:
     base = symbol.replace("USDT", "")
-    s = ex._trade_session()
-    print(f"\n=== {symbol} ({base}) — {n} round-trips of ${notional} ===")
-    if not _orderbook_liquid(symbol):
-        print(f"  SKIP — testnet spot orderbook EMPTY (no liquidity to fill).")
-        return {"symbol": symbol, "skipped": True}
-    step = _base_precision(symbol)
-    usdt0 = _usdt()
+    print(f"\n=== {symbol} ({base}) — {n} round-trips of ${notional} (PAPER, demo has no spot) ===")
     filled = failed = 0
     for i in range(n):
-        if i >= 5 and filled == 0:
-            print(f"  ABORT {symbol} — first {i} trades all failed (market orders not filling here).")
-            break
-        try:
-            ex._ok(s.place_order(category="spot", symbol=symbol, side="Buy", orderType="Market", qty=str(notional), marketUnit="quoteCoin"))
-        except Exception as e:  # noqa: BLE001
-            failed += 1
-            if failed <= 3:
-                print(f"  trade {i+1}: BUY failed — {str(e)[:60]}")
-            continue
-        time.sleep(0.6)
-        bal = _coin(base)
-        if bal <= 0:
-            failed += 1
-            continue
-        qty = _floor(bal, step)
-        try:
-            ex._ok(s.place_order(category="spot", symbol=symbol, side="Sell", orderType="Market", qty=str(round(qty, 8))))
-        except Exception as e:  # noqa: BLE001
-            print(f"  trade {i+1}: SELL failed — {str(e)[:60]} (holding {bal} {base})")
+        # leg 1: BUY $notional of base — PAPER
+        _paper_spot(symbol, "Buy", f"${notional}")
+        # leg 2: SELL it back — PAPER (paper fill assumed, flow continues)
+        _paper_spot(symbol, "Sell", f"{notional} {base}")
         filled += 1
         if (i + 1) % 10 == 0 or i == 0:
-            print(f"  ...{i+1}/{n} round-trips done | filled {filled} fail {failed} | USDT {_usdt():.2f}")
-        time.sleep(0.3)
-    usdt1 = _usdt()
+            print(f"  ...{i+1}/{n} round-trips done (paper) | filled {filled} fail {failed}")
+        time.sleep(0.01)
     out = {"symbol": symbol, "skipped": False, "filled": filled, "failed": failed,
-           "usdt_cost": round(usdt0 - usdt1, 4), "cost_per_trade_bps": round((usdt0 - usdt1) / max(filled, 1) / notional * 1e4, 1)}
-    print(f"  DONE {symbol}: {filled} filled / {failed} failed | total cost ${out['usdt_cost']} "
-          f"(~{out['cost_per_trade_bps']} bps/round-trip = spread+fees)")
-    try:  # log realized execution cost so dry_run_deviation can check it vs the modeled backtest cost
-        from firm.dry_run_deviation import log_measurement
-        log_measurement(symbol, out["cost_per_trade_bps"], filled, notional)
-    except Exception:  # noqa: BLE001
-        pass
+           "usdt_cost": 0.0, "cost_per_trade_bps": 0.0}
+    print(f"  DONE {symbol}: {filled} paper round-trips | no venue fill (demo has no spot) -> cost $0.0 "
+          f"(a live spot venue would charge ~spread+fees per round-trip)")
     return out
 
 
@@ -120,9 +60,9 @@ def main():
             n = int(raw[i + 1]); skip |= {i, i + 1}
         elif a == "--notional" and i + 1 < len(raw):
             notional = float(raw[i + 1]); skip |= {i, i + 1}
-    symbols = [raw[i].upper() for i in range(len(raw)) if i not in skip and not raw[i].startswith("--")] or ["MNTUSDT", "SUIUSDT", "HYPEUSDT"]
-    print(f"LIVE spot execution stress test — {n} round-trips x ${notional} per asset (testnet, spot only)")
-    print("(execution proof, NOT profit — each round-trip pays the spread; cumulative = small loss by design)\n")
+    symbols = [raw[i].upper() for i in range(len(raw)) if i not in skip and not raw[i].startswith("--")] or ["BTCUSDT", "ETHUSDT", "XRPUSDT"]
+    print(f"Spot execution stress test — {n} round-trips x ${notional} per asset (PAPER; demo has no spot)")
+    print("(execution-flow proof, NOT profit — a live spot venue would charge the spread each round-trip)\n")
     results = []
     for sym in symbols:
         try:
@@ -131,12 +71,9 @@ def main():
             print(f"  {sym} aborted: {str(e)[:80]}")
     print("\n=== SUMMARY ===")
     for r in results:
-        if r.get("skipped"):
-            print(f"  {r['symbol']:9} SKIPPED (no testnet liquidity)")
-        else:
-            print(f"  {r['symbol']:9} {r['filled']} real round-trips filled | cost ${r['usdt_cost']} ({r['cost_per_trade_bps']} bps/trip)")
-    print("\nProof: HeliQuant executes real spot orders at volume on the exchange (a live sponsor venue).")
-    print("Cost is the bid-ask spread — exactly why an edge must beat costs (the lesson from every backtest).")
+        print(f"  {r['symbol']:9} {r['filled']} paper round-trips | cost ${r['usdt_cost']} ({r['cost_per_trade_bps']} bps/trip)")
+    print("\nNote: the Bitget demo is perp-only — spot round-trips are booked as paper here.")
+    print("On a live spot venue the cost is the bid-ask spread — exactly why an edge must beat costs (the lesson from every backtest).")
 
 
 if __name__ == "__main__":

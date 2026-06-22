@@ -2,8 +2,12 @@
 
 The fix for the raw-edge executor (scripts/82, which bypassed the brain). Each cycle runs the FULL org
 (7 desks -> bull/bear debate -> PM -> deterministic R:R + rugpull gates). ONLY if the PM returns ENTER
-LONG with a VALID ticket does it BUY spot and HOLD per the edge horizon. On ABSTAIN it takes no trade (and
+LONG with a VALID ticket does it BUY and HOLD per the edge horizon. On ABSTAIN it takes no trade (and
 closes any open un-sanctioned position). Trades are firm-governed, not signal-mentah.
+
+DEMO HAS NO SPOT: the Bitget demo is perp-only, so the BUY/SELL legs here are recorded as honest PAPER
+fills (a paper LONG held per the edge horizon) — never a fabricated venue order. The reference price comes
+from the asset's own positioning data, not a venue read.
 
 HONEST about "100 trades": HeliQuant is DISCIPLINED — it ABSTAINS far more than it trades (the R:R≥2.0
 gate, regime/on-chain vetoes, etc.). So trades accumulate SLOWLY over real time as the market evolves;
@@ -25,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 sys.path.insert(0, str(ROOT))
-from firm import bybit_executor as ex  # noqa: E402
+from firm import exchange_executor as ex  # noqa: E402
 from firm.edge_lab import H as EDGE_H  # noqa: E402
 from firm.organization import run_organization  # noqa: E402
 
@@ -33,25 +37,25 @@ POS_FILE = DATA / "live_position.json"
 LEDGER = DATA / "firm_trades.jsonl"
 
 
-def _bal(coin: str) -> float:
-    res = ex._ok(ex._read_session().get_wallet_balance(accountType="UNIFIED"))
-    return float(next((c.get("walletBalance") for a in res.get("list", []) for c in a.get("coin", [])
-                       if c.get("coin") == coin), 0) or 0)
+def _price(symbol: str) -> float:
+    """Reference price from the asset's positioning data (last close) — honest paper price, no venue read."""
+    import pandas as pd
+    base = symbol[:-4].lower()
+    fp = DATA / f"{base}_positioning.csv"
+    if not fp.exists():
+        return 0.0
+    df = pd.read_csv(fp)
+    return float(df["close"].iloc[-1]) if "close" in df.columns and len(df) else 0.0
 
 
-def _spot(side: str, qty, symbol: str, quote: bool = False) -> None:
-    intended = {"category": "spot", "symbol": symbol, "side": side, "orderType": "Market", "qty": str(qty)}
-    if quote:
-        intended["marketUnit"] = "quoteCoin"
-    if ex.DRY_RUN:
-        print(f"    [DRY] {side} spot {qty} {symbol} — not sent")
-        return
-    res = ex._ok(ex._trade_session().place_order(**intended))
-    print(f"    [LIVE] {side} spot {qty} {symbol} -> orderId {res.get('orderId')}")
+def _paper_spot(side: str, qty, symbol: str, quote: bool = False) -> None:
+    """Spot leg is PAPER — the Bitget demo is perp-only, so we never hit the venue for spot."""
+    base = symbol[:-4]
+    print(f"    [paper] spot leg not on Bitget demo — {side} {qty} {base} recorded as paper")
 
 
 def execute_decision(symbol: str, dec: dict, notional: float, live: bool) -> str:
-    """Obey the PM: ENTER LONG + valid ticket -> buy+hold; ABSTAIN -> close any open position."""
+    """Obey the PM: ENTER LONG + valid ticket -> buy+hold (paper); ABSTAIN -> close any open position."""
     base = symbol[:-4]
     d = str(dec.get("decision", "")).upper()
     direction = str(dec.get("direction", "")).upper()
@@ -60,16 +64,16 @@ def execute_decision(symbol: str, dec: dict, notional: float, live: bool) -> str
     if d == "ENTER" and direction == "LONG" and ticket_ok:
         if POS_FILE.exists():
             print("    already holding -> no stack."); return "HOLD"
-        print(f"    PM ENTER LONG + valid ticket -> BUY ${notional} {base} spot, HOLD {EDGE_H}h:")
-        before = _bal(base) if live else 0.0
-        _spot("Buy", notional, symbol, quote=True)
+        print(f"    PM ENTER LONG + valid ticket -> BUY ${notional} {base} (PAPER), HOLD {EDGE_H}h:")
+        _paper_spot("Buy", notional, symbol, quote=True)
         if live:
-            time.sleep(1.5)
-            qty = round(_bal(base) - before, 6)
+            time.sleep(0.5)
+            px = _price(symbol)
+            qty = round(notional / px, 6) if px > 0 else 0.0
             now = datetime.now(timezone.utc)
             POS_FILE.write_text(json.dumps({"symbol": symbol, "base": base, "qty": qty,
                 "notional": notional, "entry_utc": now.isoformat(),
-                "hold_until_utc": (now + timedelta(hours=EDGE_H)).isoformat()}))
+                "hold_until_utc": (now + timedelta(hours=EDGE_H)).isoformat(), "paper": True}))
             LEDGER.open("a").write(json.dumps({"t": now.isoformat(), "symbol": symbol, "action": "ENTER", "qty": qty}) + "\n")
         return "TRADE"
     # ABSTAIN (or non-LONG / invalid ticket) -> ensure flat
@@ -79,8 +83,7 @@ def execute_decision(symbol: str, dec: dict, notional: float, live: bool) -> str
         expired = now >= datetime.fromisoformat(pos["hold_until_utc"])
         if expired:
             print("    firm no longer ENTER + hold elapsed -> close position.")
-            bal = _bal(base) if live else pos["qty"]
-            _spot("Sell", round(bal, 2), symbol)
+            _paper_spot("Sell", round(pos["qty"], 2), symbol)
             if live:
                 POS_FILE.unlink()
                 LEDGER.open("a").write(json.dumps({"t": now.isoformat(), "symbol": symbol, "action": "EXIT"}) + "\n")
@@ -95,7 +98,7 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:  # noqa: BLE001
         pass
-    ap = argparse.ArgumentParser(description="Firm-governed execution loop (org decides, executor obeys).")
+    ap = argparse.ArgumentParser(description="Firm-governed execution loop (org decides, executor obeys; demo perp-only -> spot legs paper).")
     ap.add_argument("--symbol", default="MNTUSDT")
     ap.add_argument("--notional", type=float, default=100.0)
     ap.add_argument("--cycles", type=int, default=1)
