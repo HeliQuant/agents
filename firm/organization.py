@@ -473,7 +473,7 @@ def tool_carry(ticker: str) -> dict:
     except Exception:  # noqa: BLE001
         this = None
     best = None
-    for s in ("HYPEUSDT", "SUIUSDT", "MNTUSDT", "BTCUSDT", "ETHUSDT"):
+    for s in ("HYPEUSDT", "SUIUSDT", "BTCUSDT", "ETHUSDT", "XRPUSDT"):
         try:
             c = carry.live_carry(s)
         except Exception:  # noqa: BLE001
@@ -663,7 +663,8 @@ def run_pm(ticker: str, reg: dict, analysts: dict, debate: dict, verbose: bool =
 
 # ───────────── trade-ticket assembly + risk-gate repair loop (Layer 2 + Layer 3) ─────────────
 MAX_TICKET_REPAIR = 2
-ASSET_ALLOWLIST = ["MNT", "WMNT", "mETH", "METH", "cmETH", "CMETH", "USDe", "USDE", "FBTC", "BTC", "ETH", "SOL"]
+ASSET_ALLOWLIST = ["BTC", "ETH", "SOL", "HYPE", "SUI", "XRP",  # live Bitget trading basket
+                   "MNT", "WMNT", "mETH", "METH", "cmETH", "CMETH", "USDe", "USDE", "FBTC"]  # Mantle-eco (analysis)
 
 
 def _swings(df) -> tuple[float, float]:
