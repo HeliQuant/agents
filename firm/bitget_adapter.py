@@ -153,7 +153,7 @@ def get_ticker(asset: str) -> float:
     return float(row.get("lastPr") or row.get("last") or 0)
 
 
-# ── public market data (keyless · MAINNET) — a venue read alongside Bybit, no API key needed ──
+# ── public market data (keyless · MAINNET) — the firm's price/kline/funding feed, no API key needed ──
 def _pub_symbol(asset: str) -> str:
     a = asset.upper().replace("SUSDT", "").replace("USDT", "")
     return f"{a}USDT"

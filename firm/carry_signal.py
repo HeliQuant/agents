@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 
 import requests
 
-BYBIT = "https://api.bybit.com"
+BITGET_PUB = "https://api.bitget.com"   # keyless mainnet funding history — cloud-reachable (no geo wall)
 FEE = 0.00055          # taker per side per leg
 LEGS_ROUNDTRIP = 4     # open spot + open perp + close spot + close perp
 RISK_FREE_PCT = 5.0    # ~stablecoin yield benchmark
@@ -39,34 +39,32 @@ CRASH_CLASS = {
 
 
 def _fetch_funding(symbol: str, days: int) -> list[float]:
-    now = int(time.time() * 1000)
-    start = now - days * 86400 * 1000
+    """Trailing funding rates (chronological) from Bitget mainnet history — keyless, cloud-reachable.
+    100 settlements/page (newest-first), ~3/day, so up to 6 pages covers ~2 months."""
+    start_ms = (int(time.time()) - days * 86400) * 1000
     rows: dict[int, float] = {}
-    cur = now
-    for _ in range(12):
+    for page in range(1, 7):
         try:
-            j = requests.get(BYBIT + "/v5/market/funding/history",
-                             params={"category": "linear", "symbol": symbol, "limit": 200, "endTime": cur},
-                             timeout=15).json()
+            j = requests.get(BITGET_PUB + "/api/v2/mix/market/history-fund-rate",
+                             params={"symbol": symbol, "productType": "usdt-futures",
+                                     "pageSize": 100, "pageNo": page}, timeout=15).json()
         except Exception:  # noqa: BLE001
             break
-        lst = j.get("result", {}).get("list", [])
+        lst = j.get("data") if isinstance(j.get("data"), list) else []
         if not lst:
             break
         for x in lst:
-            rows[int(x["fundingRateTimestamp"])] = float(x["fundingRate"])
-        oldest = min(int(x["fundingRateTimestamp"]) for x in lst)
-        if oldest <= start or oldest >= cur:
+            rows[int(x["fundingTime"])] = float(x["fundingRate"])
+        if min(int(x["fundingTime"]) for x in lst) <= start_ms:
             break
-        cur = oldest - 1
         time.sleep(0.1)
-    return [rows[t] for t in sorted(rows) if t >= start]
+    return [rows[t] for t in sorted(rows) if t >= start_ms]
 
 
 def _read_cached_carry(symbol: str) -> dict | None:
-    """Cloud fallback: Bybit is geo-blocked from Railway, so the LOCAL engine (where Bybit is reachable)
-    computes the carry and pushes the result via /ingest -> data/{symbol}_carry.json. Read that here when
-    we can't reach Bybit ourselves. Keeps the carry desk alive in the cloud without a live exchange call."""
+    """Fallback: Bitget public funding is cloud-reachable, so the live fetch normally succeeds on Railway.
+    If it ever returns too little data, fall back to the carry result the local engine pushed to Supabase
+    (via scripts/88). Keeps the carry desk alive even on a transient feed hiccup."""
     try:
         from firm import state_store
         d = state_store.load(f"carry:{symbol.upper()}")
@@ -85,7 +83,7 @@ def live_carry(symbol: str, lookback_days: int = 60, rf_pct: float = RISK_FREE_P
     negligible amortized over a multi-week hold — see STRATEGY_CARRY §4 on why churning kills it)."""
     f = _fetch_funding(symbol, lookback_days)
     if len(f) < 20:
-        return _read_cached_carry(symbol)  # Bybit unreachable (e.g. cloud) -> use the locally-pushed result
+        return _read_cached_carry(symbol)  # thin/failed live fetch -> use the locally-pushed cached result
     n, span = len(f), lookback_days
     gross_ann = sum(f) * 365 / span * 100
     pos_pct = 100 * sum(1 for x in f if x > 0) / n
@@ -107,7 +105,7 @@ def live_carry(symbol: str, lookback_days: int = 60, rf_pct: float = RISK_FREE_P
     }
 
 
-def carry_brief(symbols=("HYPEUSDT", "SUIUSDT", "MNTUSDT", "BTCUSDT", "ETHUSDT")) -> str:
+def carry_brief(symbols=("HYPEUSDT", "SUIUSDT", "BTCUSDT", "ETHUSDT", "XRPUSDT")) -> str:
     """One-line advisory string the PM/org can read (best harvestable carry now). Empty if none qualify."""
     best = None
     for s in symbols:
